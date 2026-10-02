@@ -99,7 +99,7 @@ async function login(e){
 
   } catch (error) {
     console.error(error);
-    loginError.textContent = "Correo electrónico o contraseña incorrectos.";
+   loginError.textContent = "Error Firebase: " + error.code;
     loginError.style.display = "block";
   }
 }
