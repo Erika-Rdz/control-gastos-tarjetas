@@ -141,7 +141,12 @@ function reject(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Re
 function addEmployee(){let name=prompt("Nombre:");if(!name)return;S.employees.push({name,email:prompt("Correo:")||"",dept:prompt("Departamento:")||"",boss:prompt("Jefe:")||"",card:"****0000",limit:5000});save();render()}
 function addAccount(){let code=prompt("Código:");let name=prompt("Cuenta:");if(code&&name)S.accounts.push({code,name,limit:Number(prompt("Límite:")||0),period:"Por compra"});save();render()}
 function addCenter(){let code=prompt("Código:"),name=prompt("Centro:"),dept=prompt("Departamento:");if(code&&name)S.centers.push({code,name,dept});save();render()}
-function save(){localStorage.setItem("controlGastos",JSON.stringify(S))}
+function save(){
+  localStorage.setItem("controlGastos",JSON.stringify(S));
+  if(window.guardarEnFirebase){
+    window.guardarEnFirebase(S).catch(console.error);
+  }
+}
 function importFile(){document.getElementById("msg").textContent="Archivo seleccionado. En la siguiente versión conectaremos este importador directamente a las columnas de tu Excel."}
 try{Object.assign(S,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch(e){} render(); restoreSession();
 </script>
@@ -150,10 +155,14 @@ try{Object.assign(S,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch
   import {
     getAuth,
     signInWithEmailAndPassword,
-    signOut,
-    onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-
+    signOut,onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+  import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc
+} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
   const firebaseConfig = {
     apiKey: "AIzaSyCVX-3idv52JFeama-J-xXgljXVkDiUn5U",
     authDomain: "control-gastos-tarjetas.firebaseapp.com",
@@ -165,7 +174,7 @@ try{Object.assign(S,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch
 
   const firebaseApp = initializeApp(firebaseConfig);
   const auth = getAuth(firebaseApp);
-
+  const db = getFirestore(firebaseApp);
   window.firebaseLogin = async function(email, password) {
     return signInWithEmailAndPassword(auth, email, password);
   };
@@ -175,5 +184,26 @@ try{Object.assign(S,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch
   };
 
   window.firebaseAuth = auth;
+  window.guardarEnFirebase = async function(datos) {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  await setDoc(doc(db, "usuarios", user.uid), {
+    datos: datos
+  });
+};
+
+window.cargarDeFirebase = async function() {
+  const user = auth.currentUser;
+  if (!user) return null;
+
+  const snap = await getDoc(doc(db, "usuarios", user.uid));
+
+  if (snap.exists()) {
+    return snap.data().datos;
+  }
+
+  return null;
+};
 </script>  
 </body></html>
