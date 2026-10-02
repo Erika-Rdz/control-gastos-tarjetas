@@ -137,7 +137,7 @@ function togglePassword(){loginPassword.type=showPassword.checked?"text":"passwo
 function restoreSession(){try{let s=JSON.parse(sessionStorage.getItem("controlGastosSession"));if(s&&s.user)openApp(s)}catch(e){}}
 const S={employees:[
 {name:"Francisco Peña",email:"",dept:"Ventas",boss:"Juan Pérez",card:"****7183",limit:5000},
-{name:"Juan Hernández",email:"",dept:"Ventas",boss:"Juan Pérez",card:"****0000",limit:5000},
+
 {name:"Marisela Ancira",email:"",dept:"Administración",boss:"María López",card:"****0000",limit:5000}],
 accounts:[{code:"5101",name:"Alimentos",limit:500,period:"Diario"},{code:"5102",name:"Hospedaje",limit:1500,period:"Por noche"},{code:"5103",name:"Gasolina",limit:2000,period:"Semanal"},{code:"5104",name:"Papelería",limit:1000,period:"Por compra"}],
 centers:[{code:"ADM-001",name:"Administración",dept:"Administración"},{code:"VEN-001",name:"Ventas",dept:"Ventas"},{code:"OPE-001",name:"Operaciones",dept:"Operaciones"}],expenses:[]};
