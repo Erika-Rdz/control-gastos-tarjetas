@@ -145,7 +145,7 @@ const money=n=>new Intl.NumberFormat("es-MX",{style:"currency",currency:"USD"}).
 function show(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active")}
 function render(){
 employees.innerHTML=s.employees.map((e,i)=>"<tr><td>"+e.name+"</td><td>"+(e.email||"—")+"</td><td>"+e.dept+"</td><td>"+e.boss+"</td><td><button onclick=\"editEmployee("+i+")\">✏️ Editar</button> <button onclick=\"deleteEmployee("+i+")\">🗑️ Eliminar</button></td></tr>").join("");
-let rows=S.employees.map(e=>{let g=S.expenses.filter(x=>x.employee===e.name).reduce((a,x)=>a+x.amount,0);return "<tr><td>"+e.name+"</td><td>"+e.card+"</td><td>"+money(e.limit)+"</td><td>"+money(g)+"</td><td>"+money(e.limit-g)+"</td></tr>";}).join("");
+let rows=s.employees.map(e=>{let g=S.expenses.filter(x=>x.employee===e.name).reduce((a,x)=>a+x.amount,0);return "<tr><td>"+e.name+"</td><td>"+e.card+"</td><td>"+money(e.limit)+"</td><td>"+money(g)+"</td><td>"+money(e.limit-g)+"</td></tr>";}).join("");
 control.innerHTML=cards.innerHTML=rows;
 expenses.innerHTML=S.expenses.map((x,i)=>"<tr><td>"+x.date+"</td><td>"+x.employee+"</td><td>"+x.supplier+"</td><td>"+money(x.amount)+"</td><td>"+(x.concept||"")+"</td><td>"+(x.account||"")+"</td><td>"+(x.center||"")+"</td><td>"+(x.receipt?"Sí":"No")+"</td><td>"+(x.status||"")+"</td></tr>").join("");
 accounts.innerHTML=S.accounts.map(a=>"<tr><td>"+a.code+"</td><td>"+a.name+"</td><td><input type=\"number\" value=\""+a.limit+"\" onchange=\"S.accounts.find(x=>x.code=='"+a.code+"').limit=Number(this.value);save();render()\"></td><td>"+a.period+"</td></tr>").join("");
