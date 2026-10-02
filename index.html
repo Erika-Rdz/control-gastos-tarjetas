@@ -157,7 +157,7 @@ function check(i){let x=S.expenses[i],a=S.accounts.find(a=>a.name==x.account);x.
 function authorize(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Autorizado";save();render()}
 function reject(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Rechazado";save();render()}
 function editEmployee(i){
-  let e=S.employees[i];
+  let e=s.employees[i];
   let name=prompt("Nombre:",e.name);
   if(!name)return;
   e.name=name;
