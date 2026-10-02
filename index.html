@@ -103,7 +103,25 @@ async function login(e){
     loginError.style.display = "block";
   }
 }
-function openApp(s){loginScreen.style.display="none";appShell.style.display="block";userLabel.textContent=s.name;roleLabel.textContent=s.role}
+async function openApp(s){
+  loginScreen.style.display="none";
+  appShell.style.display="block";
+  userLabel.textContent=s.name;
+  roleLabel.textContent=s.role;
+
+  try{
+    if(window.cargarDeFirebase){
+      const datosFirebase = await window.cargarDeFirebase();
+      if(datosFirebase){
+        Object.assign(S, datosFirebase);
+        localStorage.setItem("controlGastos", JSON.stringify(S));
+        render();
+      }
+    }
+  }catch(e){
+    console.error("Error al cargar Firebase:", e);
+  }
+}
 async function logout(){
   try {
     await window.firebaseLogout();
