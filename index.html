@@ -135,7 +135,7 @@ async function logout(){
 }
 function togglePassword(){loginPassword.type=showPassword.checked?"text":"password"}
 function restoreSession(){try{let s=JSON.parse(sessionStorage.getItem("controlGastosSession"));if(s&&s.user)openApp(s)}catch(e){}}
-const S={employees:[
+const s={employees:[
 {name:"Francisco Peña",email:"",dept:"Ventas",boss:"Juan Pérez",card:"****7183",limit:5000},
 
 {name:"Marisela Ancira",email:"",dept:"Administración",boss:"María López",card:"****0000",limit:5000}],
