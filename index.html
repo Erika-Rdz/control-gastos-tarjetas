@@ -144,7 +144,7 @@ centers:[{code:"ADM-001",name:"Administración",dept:"Administración"},{code:"V
 const money=n=>new Intl.NumberFormat("es-MX",{style:"currency",currency:"USD"}).format(n||0);
 function show(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active")}
 function render(){
-employees.innerHTML=S.employees.map(e=>`<tr><td>${e.name}</td><td>${e.email||"—"}</td><td>${e.dept}</td><td>${e.boss}</td></tr>`).join("");
+employees.innerHTML=S.employees.map((e,i)=>`<tr><td>${e.name}</td><td>${e.email||"—"}</td><td>${e.dept}</td><td>${e.boss}</td><td><button onclick="editEmployee(${i})">✏️ Editar</button></td></tr>
 let rows=S.employees.map(e=>{let g=S.expenses.filter(x=>x.employee==e.name).reduce((a,x)=>a+x.amount,0);return `<tr><td>${e.name}</td><td>${e.card}</td><td>${money(e.limit)}</td><td>${money(g)}</td><td>${money(e.limit-g)}</td></tr>`}).join("");
 control.innerHTML=cards.innerHTML=rows;
 expenses.innerHTML=S.expenses.map((x,i)=>`<tr><td>${x.date}</td><td>${x.employee}</td><td>${x.supplier}</td><td>${money(x.amount)}</td><td><input value="${x.concept||""}" onchange="S.expenses[${i}].concept=this.value;save()"></td><td><select onchange="S.expenses[${i}].account=this.value;check(${i})"><option>Seleccionar</option>${S.accounts.map(a=>`<option ${x.account==a.name?"selected":""}>${a.name}</option>`)}</select></td><td><select onchange="S.expenses[${i}].center=this.value;save()"><option>Seleccionar</option>${S.centers.map(c=>`<option ${x.center==c.name?"selected":""}>${c.name}</option>`)}</select></td><td><input type=file onchange="S.expenses[${i}].receipt=this.files[0]?.name||'';save();render()"></td><td>${x.over?'<span class="badge danger">Autorizar</span>':'<span class="badge warn">Pendiente</span>'}</td></tr>`).join("");
@@ -156,7 +156,18 @@ total.textContent=money(S.expenses.reduce((a,x)=>a+x.amount,0));pending.textCont
 function check(i){let x=S.expenses[i],a=S.accounts.find(a=>a.name==x.account);x.over=!!(a&&x.amount>a.limit);save();render()}
 function authorize(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Autorizado";save();render()}
 function reject(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Rechazado";save();render()}
-function addEmployee(){let name=prompt("Nombre:");if(!name)return;S.employees.push({name,email:prompt("Correo:")||"",dept:prompt("Departamento:")||"",boss:prompt("Jefe:")||"",card:"****0000",limit:5000});save();render()}
+function editEmployee(i){
+  let e=S.employees[i];
+  let name=prompt("Nombre:",e.name);
+  if(!name)return;
+  e.name=name;
+  e.email=prompt("Correo:",e.email||"")||"";
+  e.dept=prompt("Departamento:",e.dept||"")||"";
+  e.boss=prompt("Jefe:",e.boss||"")||"";
+  save();
+  render();
+}
+  function addEmployee(){let name=prompt("Nombre:");if(!name)return;S.employees.push({name,email:prompt("Correo:")||"",dept:prompt("Departamento:")||"",boss:prompt("Jefe:")||"",card:"****0000",limit:5000});save();render()}
 function addAccount(){let code=prompt("Código:");let name=prompt("Cuenta:");if(code&&name)S.accounts.push({code,name,limit:Number(prompt("Límite:")||0),period:"Por compra"});save();render()}
 function addCenter(){let code=prompt("Código:"),name=prompt("Centro:"),dept=prompt("Departamento:");if(code&&name)S.centers.push({code,name,dept});save();render()}
 function save(){
