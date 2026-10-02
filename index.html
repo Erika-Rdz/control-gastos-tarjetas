@@ -78,9 +78,43 @@ input,select{padding:9px;border:1px solid #ccd3dc;border-radius:6px}
 </main></div></div>
 <script>
 const DEMO_USERS=[{user:"admin",password:"Admin123!",name:"Administrador",role:"Administrador"}];
-function login(e){e.preventDefault();let u=loginUser.value.trim(),p=loginPassword.value;let f=DEMO_USERS.find(x=>x.user===u&&x.password===p);if(!f){loginError.style.display="block";return}sessionStorage.setItem("controlGastosSession",JSON.stringify(f));openApp(f)}
+async function login(e){
+  e.preventDefault();
+
+  const email = loginUser.value.trim();
+  const password = loginPassword.value;
+
+  try {
+    const credential = await window.firebaseLogin(email, password);
+
+    const s = {
+      user: credential.user.email,
+      name: "Administrador",
+      role: "Administrador"
+    };
+
+    sessionStorage.setItem("controlGastosSession", JSON.stringify(s));
+    loginError.style.display = "none";
+    openApp(s);
+
+  } catch (error) {
+    console.error(error);
+    loginError.textContent = "Correo electrónico o contraseña incorrectos.";
+    loginError.style.display = "block";
+  }
+}
 function openApp(s){loginScreen.style.display="none";appShell.style.display="block";userLabel.textContent=s.name;roleLabel.textContent=s.role}
-function logout(){sessionStorage.removeItem("controlGastosSession");appShell.style.display="none";loginScreen.style.display="flex";loginPassword.value=""}
+async function logout(){
+  try {
+    await window.firebaseLogout();
+  } catch(e) {
+    console.error(e);
+  }
+  sessionStorage.removeItem("controlGastosSession");
+  appShell.style.display="none";
+  loginScreen.style.display="flex";
+  loginPassword.value="";
+}
 function togglePassword(){loginPassword.type=showPassword.checked?"text":"password"}
 function restoreSession(){try{let s=JSON.parse(sessionStorage.getItem("controlGastosSession"));if(s&&s.user)openApp(s)}catch(e){}}
 const S={employees:[
@@ -110,4 +144,36 @@ function addCenter(){let code=prompt("Código:"),name=prompt("Centro:"),dept=pro
 function save(){localStorage.setItem("controlGastos",JSON.stringify(S))}
 function importFile(){document.getElementById("msg").textContent="Archivo seleccionado. En la siguiente versión conectaremos este importador directamente a las columnas de tu Excel."}
 try{Object.assign(S,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch(e){} render(); restoreSession();
-</script></body></html>
+</script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+  import {
+    getAuth,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCVX-3idv52JFeama-J-xXgIjXVkDiUn5U",
+    authDomain: "control-gastos-tarjetas.firebaseapp.com",
+    projectId: "control-gastos-tarjetas",
+    storageBucket: "control-gastos-tarjetas.firebasestorage.app",
+    messagingSenderId: "59175865970",
+    appId: "1:59175865970:web:f06650346537b6a7413ceb"
+  };
+
+  const firebaseApp = initializeApp(firebaseConfig);
+  const auth = getAuth(firebaseApp);
+
+  window.firebaseLogin = async function(email, password) {
+    return signInWithEmailAndPassword(auth, email, password);
+  };
+
+  window.firebaseLogout = async function() {
+    return signOut(auth);
+  };
+
+  window.firebaseAuth = auth;
+</script>  
+</body></html>
