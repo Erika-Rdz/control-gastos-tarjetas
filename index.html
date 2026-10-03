@@ -46,6 +46,6 @@ try{Object.assign(s,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";import {getAuth,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";import {getFirestore,doc,getDoc,setDoc} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 const firebaseConfig={apiKey:"AIzaSyCVX-3idv52JFeama-J-xXgljXVkDiUn5U",authDomain:"control-gastos-tarjetas.firebaseapp.com",projectId:"control-gastos-tarjetas",storageBucket:"control-gastos-tarjetas.firebasestorage.app",messagingSenderId:"59175865970",appId:"1:59175865970:web:f06650346537b6a7413ceb"};const firebaseApp=initializeApp(firebaseConfig),auth=getAuth(firebaseApp),db=getFirestore(firebaseApp);window.firebaseLogin=(email,password)=>signInWithEmailAndPassword(auth,email,password);window.firebaseLogout=()=>signOut(auth);window.firebaseAuth=auth;window.guardarEnFirebase=async datos=>{const user=auth.currentUser;if(!user)return;await setDoc(doc(db,"usuarios",user.uid),{datos})};window.cargarDeFirebase=async()=>{const user=auth.currentUser;if(!user)return null;const snap=await getDoc(doc(db,"usuarios",user.uid));return snap.exists()?snap.data().datos:null};
-</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="truist-importer.js"></script>
 </body></html>
