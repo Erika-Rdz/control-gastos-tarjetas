@@ -40,7 +40,7 @@ function addCenter(){let code=prompt("Código:"),name=prompt("Centro:"),dept=pro
 function authorize(id){let x=s.expenses.find(x=>x.id==id);if(x){x.over=false;x.status="Autorizado";save();render()}}
 function reject(id){let x=s.expenses.find(x=>x.id==id);if(x){x.over=false;x.status="Rechazado";save();render()}}
 function save(){localStorage.setItem("controlGastos",JSON.stringify(s));if(window.guardarEnFirebase)window.guardarEnFirebase(s).catch(console.error)}
-function importFile(){document.getElementById("msg").textContent="Archivo seleccionado. En la siguiente versión conectaremos este importador directamente a las columnas de tu Excel."}
+function importFile(){if(window.importTruistFile){window.importTruistFile();}else{document.getElementById("msg").textContent="El importador de Truist no está disponible.";}}
 try{Object.assign(s,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch(e){}render();restoreSession();
 </script>
 <script type="module">
