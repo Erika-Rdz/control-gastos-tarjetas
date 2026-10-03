@@ -2,244 +2,43 @@
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Control de Gastos y Tarjetas</title>
 <style>
-body{margin:0;font-family:Arial;background:#f4f6f9;color:#202938}header{background:#173b67;color:white;padding:18px 24px}
-.layout{display:flex;min-height:calc(100vh - 65px)}nav{width:220px;background:white;padding:12px;border-right:1px solid #ddd}
-nav button{display:block;width:100%;padding:12px;border:0;background:white;text-align:left;border-radius:8px;cursor:pointer}
-nav button:hover,nav button.active{background:#e8eff7;color:#173b67;font-weight:bold}main{flex:1;padding:25px}.page{display:none}.page.active{display:block}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}.card,.box{background:white;border:1px solid #ddd;border-radius:10px;padding:18px;margin-top:15px}
-.num{font-size:27px;font-weight:bold;margin-top:7px}table{width:100%;border-collapse:collapse;background:white}
-th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:13px}th{background:#edf1f5}
-button.primary{background:#173b67;color:white;border:0;padding:10px 14px;border-radius:7px;cursor:pointer}
-input,select{padding:9px;border:1px solid #ccd3dc;border-radius:6px}
-.badge{padding:4px 8px;border-radius:15px;font-size:11px}.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}.danger{background:#fee2e2;color:#991b1b}
-@media(max-width:700px){.layout{display:block}nav{width:auto;display:flex;overflow:auto}.cards{grid-template-columns:1fr 1fr}}
-
-.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#173b67,#2d5f91)}
-.login-card{width:min(420px,100%);background:white;border-radius:16px;padding:32px;box-shadow:0 20px 55px rgba(0,0,0,.22)}
-.login-card h1{margin:0 0 8px;color:#173b67;font-size:27px}.login-card p{margin:0 0 22px;color:#64748b}
-.login-card label{display:block;font-weight:bold;margin:14px 0 6px}.login-card input{width:100%;box-sizing:border-box;padding:12px}
-.login-card .primary{width:100%;margin-top:20px;font-size:15px}.login-error{color:#991b1b;background:#fee2e2;border-radius:7px;padding:9px;margin-top:12px;display:none}
-.app-shell{display:none}.topbar{display:flex;align-items:center;justify-content:space-between;gap:15px}.user-area{display:flex;align-items:center;gap:10px;font-size:14px}
-.logout{background:white;color:#173b67;border:0;border-radius:7px;padding:8px 11px;cursor:pointer;font-weight:bold}
-</style></head>
-<body>
-<div id="loginScreen" class="login-screen"><div class="login-card">
-<h1>💳 Control de Gastos y Tarjetas</h1><p>Inicia sesión para entrar al sistema.</p>
-<form onsubmit="login(event)">
-<label>Usuario</label><input id="loginUser" autocomplete="username" required>
-<label>Contraseña</label><input id="loginPassword" type="password" autocomplete="current-password" required>
-<label style="font-weight:normal"><input id="showPassword" type="checkbox" onchange="togglePassword()" style="width:auto"> Mostrar contraseña</label>
-<button class="primary" type="submit">Iniciar sesión</button>
-<div id="loginError" class="login-error">Usuario o contraseña incorrectos.</div>
-</form></div></div>
-<div id="appShell" class="app-shell">
-<header class="topbar"><div><b>Control de Gastos y Tarjetas</b> — <span id="roleLabel">Administrador</span></div>
-<div class="user-area">👤 <span id="userLabel">Usuario</span><button class="logout" onclick="logout()">Cerrar sesión</button></div></header>
-<div class="layout"><nav>
-<button class="active" onclick="show('dashboard',this)">🏠 Dashboard</button>
-<button onclick="show('empleados',this)">👥 Empleados</button>
-<button onclick="show('tarjetas',this)">💳 Tarjetas</button>
-<button onclick="show('estados',this)">📥 Estados de cuenta</button>
-<button onclick="show('gastos',this)">🧾 Gastos</button>
-<button onclick="show('cuentas',this)">📚 Cuentas de gasto</button>
-<button onclick="show('centros',this)">🏢 Centros de costos</button>
-<button onclick="show('limites',this)">💰 Límites</button>
-<button onclick="show('autorizaciones',this)">🔔 Autorizaciones</button>
-</nav><main>
-<section id="dashboard" class="page active"><h2>Dashboard</h2>
-<div class="cards"><div class="card">Gastos del periodo<div class="num" id="total">$0</div></div>
-<div class="card">Pendientes<div class="num" id="pending">0</div></div>
-<div class="card">Sin comprobante<div class="num" id="missing">0</div></div>
-<div class="card">Fuera de límite<div class="num" id="over">0</div></div></div>
-<div class="box"><h3>Control por empleado</h3><table><thead><tr><th>Empleado</th><th>Tarjeta</th><th>Límite</th><th>Gastado</th><th>Disponible</th></tr></thead><tbody id="control"></tbody></table></div>
-</section>
-
-<section id="empleados" class="page"><h2>Empleados</h2><button class="primary" onclick="addEmployee()">+ Agregar empleado</button>
-<div class="box"><table><thead><tr><th>Empleado</th><th>Correo</th><th>Departamento</th><th>Jefe</th></tr></thead><tbody id="employees"></tbody></table></div></section>
-
-<section id="tarjetas" class="page"><h2>Control de tarjetas por empleado</h2>
-<div class="box"><table><thead><tr><th>Empleado</th><th>Tarjeta</th><th>Límite</th><th>Gastado</th><th>Disponible</th></tr></thead><tbody id="cards"></tbody></table></div></section>
-
-<section id="estados" class="page"><h2>Importar estado de cuenta</h2>
-<div class="box"><p>Selecciona el Excel de tu estado de cuenta. Esta versión es un prototipo; después ajustaremos el importador exactamente a tu archivo.</p>
-<input type="file" id="file" accept=".xlsx,.xls,.csv" onchange="importFile()"><p id="msg"></p></div></section>
-
+body{margin:0;font-family:Arial;background:#f4f6f9;color:#202938}header{background:#173b67;color:white;padding:18px 24px}.layout{display:flex;min-height:calc(100vh - 65px)}nav{width:220px;background:white;padding:12px;border-right:1px solid #ddd}nav button{display:block;width:100%;padding:12px;border:0;background:white;text-align:left;border-radius:8px;cursor:pointer}nav button:hover,nav button.active{background:#e8eff7;color:#173b67;font-weight:bold}main{flex:1;padding:25px}.page{display:none}.page.active{display:block}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}.card,.box{background:white;border:1px solid #ddd;border-radius:10px;padding:18px;margin-top:15px}.num{font-size:27px;font-weight:bold;margin-top:7px}table{width:100%;border-collapse:collapse;background:white}th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:13px}th{background:#edf1f5}button.primary{background:#173b67;color:white;border:0;padding:10px 14px;border-radius:7px;cursor:pointer}input,select{padding:9px;border:1px solid #ccd3dc;border-radius:6px}.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#173b67,#2d5f91)}.login-card{width:min(420px,100%);background:white;border-radius:16px;padding:32px;box-shadow:0 20px 55px rgba(0,0,0,.22)}.login-card h1{margin:0 0 8px;color:#173b67;font-size:27px}.login-card p{margin:0 0 22px;color:#64748b}.login-card label{display:block;font-weight:bold;margin:14px 0 6px}.login-card input{width:100%;box-sizing:border-box;padding:12px}.login-card .primary{width:100%;margin-top:20px;font-size:15px}.login-error{color:#991b1b;background:#fee2e2;border-radius:7px;padding:9px;margin-top:12px;display:none}.app-shell{display:none}.topbar{display:flex;align-items:center;justify-content:space-between;gap:15px}.user-area{display:flex;align-items:center;gap:10px;font-size:14px}.logout{background:white;color:#173b67;border:0;border-radius:7px;padding:8px 11px;cursor:pointer;font-weight:bold}@media(max-width:700px){.layout{display:block}nav{width:auto;display:flex;overflow:auto}.cards{grid-template-columns:1fr 1fr}}
+</style></head><body>
+<div id="loginScreen" class="login-screen"><div class="login-card"><h1>💳 Control de Gastos y Tarjetas</h1><p>Inicia sesión para entrar al sistema.</p><form onsubmit="login(event)"><label>Usuario</label><input id="loginUser" autocomplete="username" required><label>Contraseña</label><input id="loginPassword" type="password" autocomplete="current-password" required><label style="font-weight:normal"><input id="showPassword" type="checkbox" onchange="togglePassword()" style="width:auto"> Mostrar contraseña</label><button class="primary" type="submit">Iniciar sesión</button><div id="loginError" class="login-error">Usuario o contraseña incorrectos.</div></form></div></div>
+<div id="appShell" class="app-shell"><header class="topbar"><div><b>Control de Gastos y Tarjetas</b> — <span id="roleLabel">Administrador</span></div><div class="user-area">👤 <span id="userLabel">Usuario</span><button class="logout" onclick="logout()">Cerrar sesión</button></div></header><div class="layout"><nav><button class="active" onclick="show('dashboard',this)">🏠 Dashboard</button><button onclick="show('empleados',this)">👥 Empleados</button><button onclick="show('tarjetas',this)">💳 Tarjetas</button><button onclick="show('estados',this)">📥 Estados de cuenta</button><button onclick="show('gastos',this)">🧾 Gastos</button><button onclick="show('cuentas',this)">📚 Cuentas de gasto</button><button onclick="show('centros',this)">🏢 Centros de costos</button><button onclick="show('limites',this)">💰 Límites</button><button onclick="show('autorizaciones',this)">🔔 Autorizaciones</button></nav><main>
+<section id="dashboard" class="page active"><h2>Dashboard</h2><div class="cards"><div class="card">Gastos del periodo<div class="num" id="total">$0</div></div><div class="card">Pendientes<div class="num" id="pending">0</div></div><div class="card">Sin comprobante<div class="num" id="missing">0</div></div><div class="card">Fuera de límite<div class="num" id="over">0</div></div></div><div class="box"><h3>Control por empleado</h3><table><thead><tr><th>Empleado</th><th>Tarjeta</th><th>Límite</th><th>Gastado</th><th>Disponible</th></tr></thead><tbody id="control"></tbody></table></div></section>
+<section id="empleados" class="page"><h2>Empleados</h2><button class="primary" onclick="addEmployee()">+ Agregar empleado</button><div class="box"><table><thead><tr><th>Empleado</th><th>Correo</th><th>Departamento</th><th>Jefe</th><th>Acciones</th></tr></thead><tbody id="employees"></tbody></table></div></section>
+<section id="tarjetas" class="page"><h2>Control de tarjetas por empleado</h2><div class="box"><table><thead><tr><th>Empleado</th><th>Tarjeta</th><th>Límite</th><th>Gastado</th><th>Disponible</th><th>Acciones</th></tr></thead><tbody id="cards"></tbody></table></div></section>
+<section id="estados" class="page"><h2>Importar estado de cuenta</h2><div class="box"><p>Selecciona el Excel de tu estado de cuenta. Esta versión es un prototipo; después ajustaremos el importador exactamente a tu archivo.</p><input type="file" id="file" accept=".xlsx,.xls,.csv" onchange="importFile()"><p id="msg"></p></div></section>
 <section id="gastos" class="page"><h2>Gastos</h2><div class="box"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Comercio</th><th>Importe</th><th>Concepto</th><th>Cuenta</th><th>Centro</th><th>Comprobante</th><th>Estado</th></tr></thead><tbody id="expenses"></tbody></table></div></section>
-
-<section id="cuentas" class="page"><h2>Cuentas de gasto</h2><button class="primary" onclick="addAccount()">+ Agregar cuenta</button>
-<div class="box"><table><thead><tr><th>Código</th><th>Cuenta</th><th>Límite</th><th>Periodo</th></tr></thead><tbody id="accounts"></tbody></table></div></section>
-
-<section id="centros" class="page"><h2>Centros de costos</h2><button class="primary" onclick="addCenter()">+ Agregar centro</button>
-<div class="box"><table><thead><tr><th>Código</th><th>Centro</th><th>Departamento</th></tr></thead><tbody id="centers"></tbody></table></div></section>
-
-<section id="limites" class="page"><h2>Límites</h2><div class="box"><p>Aquí podrás configurar límites por cuenta, empleado, departamento y tarjeta. En esta primera versión se muestran los límites base.</p><table><thead><tr><th>Cuenta</th><th>Límite</th><th>Periodo</th></tr></thead><tbody id="limits"></tbody></table></div></section>
-
+<section id="cuentas" class="page"><h2>Cuentas de gasto</h2><button class="primary" onclick="addAccount()">+ Agregar cuenta</button><div class="box"><table><thead><tr><th>Código</th><th>Cuenta</th><th>Límite</th><th>Periodo</th></tr></thead><tbody id="accounts"></tbody></table></div></section>
+<section id="centros" class="page"><h2>Centros de costos</h2><button class="primary" onclick="addCenter()">+ Agregar centro</button><div class="box"><table><thead><tr><th>Código</th><th>Centro</th><th>Departamento</th></tr></thead><tbody id="centers"></tbody></table></div></section>
+<section id="limites" class="page"><h2>Límites</h2><div class="box"><p>Aquí podrás configurar límites por cuenta, empleado, departamento y tarjeta.</p><table><thead><tr><th>Cuenta</th><th>Límite</th><th>Periodo</th></tr></thead><tbody id="limits"></tbody></table></div></section>
 <section id="autorizaciones" class="page"><h2>Autorizaciones</h2><div class="box" id="approvals">No hay gastos pendientes de autorización.</div></section>
 </main></div></div>
 <script>
-const DEMO_USERS=[{user:"admin",password:"Admin123!",name:"Administrador",role:"Administrador"}];
-async function login(e){
-  e.preventDefault();
-
-  const email = loginUser.value.trim();
-  const password = loginPassword.value;
-
-  try {
-    const credential = await window.firebaseLogin(email, password);
-
-    const s = {
-      user: credential.user.email,
-      name: "Administrador",
-      role: "Administrador"
-    };
-
-    sessionStorage.setItem("controlGastosSession", JSON.stringify(s));
-    loginError.style.display = "none";
-    openApp(s);
-
-  } catch (error) {
-    console.error(error);
-   loginError.textContent = "Error Firebase: " + error.code;
-    loginError.style.display = "block";
-  }
-}
-async function openApp(s){
-  loginScreen.style.display="none";
-  appShell.style.display="block";
-  userLabel.textContent=s.name;
-  roleLabel.textContent=s.role;
-
-  try{
-    if(window.cargarDeFirebase){
-      const datosFirebase = await window.cargarDeFirebase();
-      if(datosFirebase){
-        Object.assign(S, datosFirebase);
-        localStorage.setItem("controlGastos", JSON.stringify(S));
-        render();
-      }
-    }
-  }catch(e){
-    console.error("Error al cargar Firebase:", e);
-  }
-}
-async function logout(){
-  try {
-    await window.firebaseLogout();
-  } catch(e) {
-    console.error(e);
-  }
-  sessionStorage.removeItem("controlGastosSession");
-  appShell.style.display="none";
-  loginScreen.style.display="flex";
-  loginPassword.value="";
-}
+async function login(e){e.preventDefault();const email=loginUser.value.trim(),password=loginPassword.value;try{const credential=await window.firebaseLogin(email,password);const session={user:credential.user.email,name:"Administrador",role:"Administrador"};sessionStorage.setItem("controlGastosSession",JSON.stringify(session));loginError.style.display="none";openApp(session)}catch(error){console.error(error);loginError.textContent="Error Firebase: "+error.code;loginError.style.display="block"}}
+async function openApp(session){loginScreen.style.display="none";appShell.style.display="block";userLabel.textContent=session.name;roleLabel.textContent=session.role;try{if(window.cargarDeFirebase){const datosFirebase=await window.cargarDeFirebase();if(datosFirebase){Object.assign(s,datosFirebase);localStorage.setItem("controlGastos",JSON.stringify(s));render()}}}catch(e){console.error("Error al cargar Firebase:",e)}}
+async function logout(){try{await window.firebaseLogout()}catch(e){console.error(e)}sessionStorage.removeItem("controlGastosSession");appShell.style.display="none";loginScreen.style.display="flex";loginPassword.value=""}
 function togglePassword(){loginPassword.type=showPassword.checked?"text":"password"}
-function restoreSession(){try{let s=JSON.parse(sessionStorage.getItem("controlGastosSession"));if(s&&s.user)openApp(s)}catch(e){}}
-const s={employees:[
-{name:"Francisco Peña",email:"",dept:"Ventas",boss:"Juan Pérez",card:"****7183",limit:5000},
-
-{name:"Marisela Ancira",email:"",dept:"Administración",boss:"María López",card:"****0000",limit:5000}],
-accounts:[{code:"5101",name:"Alimentos",limit:500,period:"Diario"},{code:"5102",name:"Hospedaje",limit:1500,period:"Por noche"},{code:"5103",name:"Gasolina",limit:2000,period:"Semanal"},{code:"5104",name:"Papelería",limit:1000,period:"Por compra"}],
-centers:[{code:"ADM-001",name:"Administración",dept:"Administración"},{code:"VEN-001",name:"Ventas",dept:"Ventas"},{code:"OPE-001",name:"Operaciones",dept:"Operaciones"}],expenses:[]};
+function restoreSession(){try{let session=JSON.parse(sessionStorage.getItem("controlGastosSession"));if(session&&session.user)openApp(session)}catch(e){}}
+const s={employees:[{name:"Francisco Peña",email:"",dept:"Ventas",boss:"Juan Pérez",card:"****7183",limit:5000},{name:"Marisela Ancira",email:"",dept:"Administración",boss:"María López",card:"****0000",limit:5000}],accounts:[{code:"5101",name:"Alimentos",limit:500,period:"Diario"},{code:"5102",name:"Hospedaje",limit:1500,period:"Por noche"},{code:"5103",name:"Gasolina",limit:2000,period:"Semanal"},{code:"5104",name:"Papelería",limit:1000,period:"Por compra"}],centers:[{code:"ADM-001",name:"Administración",dept:"Administración"},{code:"VEN-001",name:"Ventas",dept:"Ventas"},{code:"OPE-001",name:"Operaciones",dept:"Operaciones"}],expenses:[]};
 const money=n=>new Intl.NumberFormat("es-MX",{style:"currency",currency:"USD"}).format(n||0);
 function show(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active")}
-function render(){
-employees.innerHTML=s.employees.map((e,i)=>"<tr><td>"+e.name+"</td><td>"+(e.email||"—")+"</td><td>"+e.dept+"</td><td>"+e.boss+"</td><td><button onclick=\"editEmployee("+i+")\">✏️ Editar</button> <button onclick=\"deleteEmployee("+i+")\">🗑️ Eliminar</button></td></tr>").join("");
-let rows=s.employees.map(e=>{let g=s.expenses.filter(x=>x.employee===e.name).reduce((a,x)=>a+x.amount,0);return "<tr><td>"+e.name+"</td><td>"+e.card+"</td><td>"+money(e.limit)+"</td><td>"+money(g)+"</td><td>"+money(e.limit-g)+"</td></tr>";}).join("");
-control.innerHTML=cards.innerHTML=rows;
-expenses.innerHTML=S.expenses.map((x,i)=>"<tr><td>"+x.date+"</td><td>"+x.employee+"</td><td>"+x.supplier+"</td><td>"+money(x.amount)+"</td><td>"+(x.concept||"")+"</td><td>"+(x.account||"")+"</td><td>"+(x.center||"")+"</td><td>"+(x.receipt?"Sí":"No")+"</td><td>"+(x.status||"")+"</td></tr>").join("");
-accounts.innerHTML=S.accounts.map(a=>"<tr><td>"+a.code+"</td><td>"+a.name+"</td><td><input type=\"number\" value=\""+a.limit+"\" onchange=\"S.accounts.find(x=>x.code=='"+a.code+"').limit=Number(this.value);save();render()\"></td><td>"+a.period+"</td></tr>").join("");
-centers.innerHTML=S.centers.map(c=>"<tr><td>"+c.code+"</td><td>"+c.name+"</td><td>"+c.dept+"</td></tr>").join("");
-limits.innerHTML=S.accounts.map(a=>"<tr><td>"+a.name+"</td><td>"+money(a.limit)+"</td><td>"+a.period+"</td></tr>").join("");
-let ov=S.expenses.filter(x=>x.over);approvals.innerHTML=ov.length?ov.map(x=>"<div style='padding:12px;background:#fff7ed;margin:8px 0'><b>"+x.employee+"</b> - "+x.supplier+" - "+money(x.amount)+"<br>"+(x.concept||"Sin concepto")+"<br><button class='primary' onclick=\"authorize('"+x.id+"')\">Autorizar</button> <button onclick=\"reject('"+x.id+"')\">Rechazar</button></div>").join(""):"No hay gastos pendientes de autorización.";
-total.textContent=money(S.expenses.reduce((a,x)=>a+x.amount,0));pending.textContent=S.expenses.filter(x=>!x.concept||!x.account||!x.center).length;missing.textContent=S.expenses.filter(x=>!x.receipt).length;over.textContent=S.expenses.filter(x=>x.over).length}
-function check(i){let x=S.expenses[i],a=S.accounts.find(a=>a.name==x.account);x.over=!!(a&&x.amount>a.limit);save();render()}
-function authorize(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Autorizado";save();render()}
-function reject(id){let x=S.expenses.find(x=>x.id==id);x.over=false;x.status="Rechazado";save();render()}
-function editEmployee(i){
-  let e=s.employees[i];
-  let name=prompt("Nombre:",e.name);
-  if(!name)return;
-  e.name=name;
-  e.email=prompt("Correo:",e.email||"")||"";
-  e.dept=prompt("Departamento:",e.dept||"")||"";
-  e.boss=prompt("Jefe:",e.boss||"")||"";
-  save();
-  render();
-}
-  function deleteEmployee(i){
-  const e=s.employees[i];
-  if(!confirm("¿Seguro que deseas eliminar a "+e.name+"?")) return;
-  s.employees.splice(i,1);
-  save();
-  render();
-}
-  function addEmployee(){let name=prompt("Nombre:");if(!name)return;S.employees.push({name,email:prompt("Correo:")||"",dept:prompt("Departamento:")||"",boss:prompt("Jefe:")||"",card:"****0000",limit:5000});save();render()}
-function addAccount(){let code=prompt("Código:");let name=prompt("Cuenta:");if(code&&name)S.accounts.push({code,name,limit:Number(prompt("Límite:")||0),period:"Por compra"});save();render()}
-function addCenter(){let code=prompt("Código:"),name=prompt("Centro:"),dept=prompt("Departamento:");if(code&&name)S.centers.push({code,name,dept});save();render()}
-function save(){
-  localStorage.setItem("controlGastos",JSON.stringify(S));
-  if(window.guardarEnFirebase){
-    window.guardarEnFirebase(S).catch(console.error);
-  }
-}
+function render(){employees.innerHTML=s.employees.map((e,i)=>`<tr><td>${e.name}</td><td>${e.email||"—"}</td><td>${e.dept}</td><td>${e.boss}</td><td><button onclick="editEmployee(${i})">✏️ Editar</button> <button onclick="deleteEmployee(${i})">🗑️ Eliminar</button></td></tr>`).join("");control.innerHTML=s.employees.map(e=>{let g=s.expenses.filter(x=>x.employee===e.name).reduce((a,x)=>a+Number(x.amount||0),0);return `<tr><td>${e.name}</td><td>${e.card}</td><td>${money(e.limit)}</td><td>${money(g)}</td><td>${money(e.limit-g)}</td></tr>`}).join("");cards.innerHTML=s.employees.map((e,i)=>{let g=s.expenses.filter(x=>x.employee===e.name).reduce((a,x)=>a+Number(x.amount||0),0);return `<tr><td>${e.name}</td><td>${e.card}</td><td>${money(e.limit)}</td><td>${money(g)}</td><td>${money(e.limit-g)}</td><td><button onclick="editCard(${i})">✏️ Configurar</button></td></tr>`}).join("");expenses.innerHTML=s.expenses.map(x=>`<tr><td>${x.date||""}</td><td>${x.employee||""}</td><td>${x.supplier||""}</td><td>${money(x.amount)}</td><td>${x.concept||""}</td><td>${x.account||""}</td><td>${x.center||""}</td><td>${x.receipt?"Sí":"No"}</td><td>${x.status||""}</td></tr>`).join("");accounts.innerHTML=s.accounts.map(a=>`<tr><td>${a.code}</td><td>${a.name}</td><td><input type="number" value="${a.limit}" onchange="s.accounts.find(x=>x.code=='${a.code}').limit=Number(this.value);save();render()"></td><td>${a.period}</td></tr>`).join("");centers.innerHTML=s.centers.map(c=>`<tr><td>${c.code}</td><td>${c.name}</td><td>${c.dept}</td></tr>`).join("");limits.innerHTML=s.accounts.map(a=>`<tr><td>${a.name}</td><td>${money(a.limit)}</td><td>${a.period}</td></tr>`).join("");let ov=s.expenses.filter(x=>x.over);approvals.innerHTML=ov.length?ov.map(x=>`<div style="padding:12px;background:#fff7ed;margin:8px 0"><b>${x.employee}</b> - ${x.supplier} - ${money(x.amount)}<br>${x.concept||"Sin concepto"}<br><button class="primary" onclick="authorize('${x.id}')">Autorizar</button> <button onclick="reject('${x.id}')">Rechazar</button></div>`).join(""):"No hay gastos pendientes de autorización.";total.textContent=money(s.expenses.reduce((a,x)=>a+Number(x.amount||0),0));pending.textContent=s.expenses.filter(x=>!x.concept||!x.account||!x.center).length;missing.textContent=s.expenses.filter(x=>!x.receipt).length;over.textContent=s.expenses.filter(x=>x.over).length}
+function editEmployee(i){let e=s.employees[i],name=prompt("Nombre:",e.name);if(!name)return;e.name=name;e.email=prompt("Correo:",e.email||"")||"";e.dept=prompt("Departamento:",e.dept||"")||"";e.boss=prompt("Jefe:",e.boss||"")||"";save();render()}
+function deleteEmployee(i){const e=s.employees[i];if(!confirm("¿Seguro que deseas eliminar a "+e.name+"?"))return;s.employees.splice(i,1);save();render()}
+function editCard(i){let e=s.employees[i];let last4=prompt("Últimos 4 dígitos de la tarjeta:",(e.card||"").replace(/\D/g,"").slice(-4));if(last4===null)return;last4=last4.trim();if(!/^\d{4}$/.test(last4)){alert("Escribe exactamente los últimos 4 dígitos.");return}let limit=prompt("Límite de la tarjeta:",e.limit||0);if(limit===null)return;limit=Number(limit);if(!Number.isFinite(limit)||limit<0){alert("Escribe un límite válido.");return}e.card="****"+last4;e.limit=limit;save();render()}
+function addEmployee(){let name=prompt("Nombre:");if(!name)return;let email=prompt("Correo:")||"",dept=prompt("Departamento:")||"",boss=prompt("Jefe:")||"",last4=prompt("Últimos 4 dígitos de la tarjeta:")||"0000";last4=last4.replace(/\D/g,"").slice(-4).padStart(4,"0");let limit=Number(prompt("Límite de la tarjeta:","5000")||5000);s.employees.push({name,email,dept,boss,card:"****"+last4,limit:Number.isFinite(limit)&&limit>=0?limit:5000});save();render()}
+function addAccount(){let code=prompt("Código:"),name=prompt("Cuenta:");if(code&&name)s.accounts.push({code,name,limit:Number(prompt("Límite:")||0),period:"Por compra"});save();render()}
+function addCenter(){let code=prompt("Código:"),name=prompt("Centro:"),dept=prompt("Departamento:");if(code&&name)s.centers.push({code,name,dept});save();render()}
+function authorize(id){let x=s.expenses.find(x=>x.id==id);if(x){x.over=false;x.status="Autorizado";save();render()}}
+function reject(id){let x=s.expenses.find(x=>x.id==id);if(x){x.over=false;x.status="Rechazado";save();render()}}
+function save(){localStorage.setItem("controlGastos",JSON.stringify(s));if(window.guardarEnFirebase)window.guardarEnFirebase(s).catch(console.error)}
 function importFile(){document.getElementById("msg").textContent="Archivo seleccionado. En la siguiente versión conectaremos este importador directamente a las columnas de tu Excel."}
-try{Object.assign(S,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch(e){} render(); restoreSession();
+try{Object.assign(s,JSON.parse(localStorage.getItem("controlGastos"))||{})}catch(e){}render();restoreSession();
 </script>
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-  import {
-    getAuth,
-    signInWithEmailAndPassword,
-    signOut,onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-  import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc
-} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
-  const firebaseConfig = {
-    apiKey: "AIzaSyCVX-3idv52JFeama-J-xXgljXVkDiUn5U",
-    authDomain: "control-gastos-tarjetas.firebaseapp.com",
-    projectId: "control-gastos-tarjetas",
-    storageBucket: "control-gastos-tarjetas.firebasestorage.app",
-    messagingSenderId: "59175865970",
-    appId: "1:59175865970:web:f06650346537b6a7413ceb"
-  };
-
-  const firebaseApp = initializeApp(firebaseConfig);
-  const auth = getAuth(firebaseApp);
-  const db = getFirestore(firebaseApp);
-  window.firebaseLogin = async function(email, password) {
-    return signInWithEmailAndPassword(auth, email, password);
-  };
-
-  window.firebaseLogout = async function() {
-    return signOut(auth);
-  };
-
-  window.firebaseAuth = auth;
-  window.guardarEnFirebase = async function(datos) {
-  const user = auth.currentUser;
-  if (!user) return;
-
-  await setDoc(doc(db, "usuarios", user.uid), {
-    datos: datos
-  });
-};
-
-window.cargarDeFirebase = async function() {
-  const user = auth.currentUser;
-  if (!user) return null;
-
-  const snap = await getDoc(doc(db, "usuarios", user.uid));
-
-  if (snap.exists()) {
-    return snap.data().datos;
-  }
-
-  return null;
-};
-</script>  
-</body></html>
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";import {getAuth,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";import {getFirestore,doc,getDoc,setDoc} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+const firebaseConfig={apiKey:"AIzaSyCVX-3idv52JFeama-J-xXgljXVkDiUn5U",authDomain:"control-gastos-tarjetas.firebaseapp.com",projectId:"control-gastos-tarjetas",storageBucket:"control-gastos-tarjetas.firebasestorage.app",messagingSenderId:"59175865970",appId:"1:59175865970:web:f06650346537b6a7413ceb"};const firebaseApp=initializeApp(firebaseConfig),auth=getAuth(firebaseApp),db=getFirestore(firebaseApp);window.firebaseLogin=(email,password)=>signInWithEmailAndPassword(auth,email,password);window.firebaseLogout=()=>signOut(auth);window.firebaseAuth=auth;window.guardarEnFirebase=async datos=>{const user=auth.currentUser;if(!user)return;await setDoc(doc(db,"usuarios",user.uid),{datos})};window.cargarDeFirebase=async()=>{const user=auth.currentUser;if(!user)return null;const snap=await getDoc(doc(db,"usuarios",user.uid));return snap.exists()?snap.data().datos:null};
+</script></body></html>
