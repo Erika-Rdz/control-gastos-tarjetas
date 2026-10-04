@@ -32,3 +32,6 @@ document.querySelectorAll("nav button").forEach(btn=>{if(btn.getAttribute("oncli
 
 // Carga la sección de reportes contables.
 (function(){const script=document.createElement("script");script.src="reports.js";document.body.appendChild(script)})();
+
+// Carga el resumen anual por empleado en el Dashboard.
+(function(){const script=document.createElement("script");script.src="dashboard-annual.js";document.body.appendChild(script)})();
