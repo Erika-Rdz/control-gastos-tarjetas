@@ -20,3 +20,6 @@ window.deleteAccount=function(i){const a=s.accounts[i];if(!a)return;if(accountIn
 function installAccountManager(){const body=document.getElementById("accounts");if(!body)return;const table=body.closest("table"),head=table&&table.querySelector("thead tr");if(head&&!head.querySelector("th[data-account-actions]")){const th=document.createElement("th");th.dataset.accountActions="1";th.textContent="Acciones";head.appendChild(th)}body.innerHTML=s.accounts.map((a,i)=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+(Number(a.limit)>0?money(a.limit):'Sin límite')+'</td><td>'+esc(a.period||'Por compra')+'</td><td><button onclick="editAccount('+i+')">✏️ Editar</button> <button onclick="deleteAccount('+i+')">🗑️ Eliminar</button></td></tr>').join("")}
 const priorRender=window.render||render;window.render=render=function(){priorRender();installAccountManager()};installAccountManager();
 })();
+
+// Carga la administración de centros de costos después de las funciones principales.
+(function(){const script=document.createElement("script");script.src="center-admin.js";document.body.appendChild(script)})();
