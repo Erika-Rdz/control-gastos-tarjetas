@@ -23,3 +23,9 @@ const priorRender=window.render||render;window.render=render=function(){priorRen
 
 // Carga la administración de centros de costos después de las funciones principales.
 (function(){const script=document.createElement("script");script.src="center-admin.js";document.body.appendChild(script)})();
+
+// La administración de límites se hace desde Cuentas de gasto; se oculta la sección duplicada.
+(function(){
+const limitsPage=document.getElementById("limites");if(limitsPage)limitsPage.style.display="none";
+document.querySelectorAll("nav button").forEach(btn=>{if(btn.getAttribute("onclick")&&btn.getAttribute("onclick").includes("'limites'"))btn.remove()});
+})();
