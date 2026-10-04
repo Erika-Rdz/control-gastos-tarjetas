@@ -1,0 +1,42 @@
+// Comprobantes PDF privados en Supabase Storage usando la sesión de Firebase.
+(function(){
+function cfg(){if(!window.SUPABASE_CONFIG)throw new Error("La configuración de comprobantes aún no está lista.");return window.SUPABASE_CONFIG}
+async function headers(contentType){const user=window.firebaseAuth&&window.firebaseAuth.currentUser;if(!user)throw new Error("Tu sesión no está activa.");const token=await user.getIdToken(false);return {apikey:cfg().publishableKey,Authorization:"Bearer "+token,...(contentType?{"Content-Type":contentType}:{})}}
+function safeName(name){return String(name||"comprobante.pdf").replace(/[^a-zA-Z0-9._-]/g,"_")}
+function employeeSession(){try{return JSON.parse(sessionStorage.getItem('controlGastosSession')||'null')?.role==='Empleado'}catch(e){return false}}
+async function persistReceipt(x){if(employeeSession()&&window.guardarGastoEmpleado){await window.guardarGastoEmpleado(x)}else{save()}}
+window.uploadReceipt=async function(i,input){const x=s.expenses[i],file=input&&input.files&&input.files[0];if(!x||!file)return;if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){alert("El comprobante debe ser un archivo PDF.");input.value="";return}if(file.size>10*1024*1024){alert("El PDF no puede pesar más de 10 MB.");input.value="";return}const user=window.firebaseAuth&&window.firebaseAuth.currentUser;if(!user){alert("Tu sesión no está activa. Vuelve a iniciar sesión.");return}input.disabled=true;try{const path=user.uid+"/"+(x.id||x._firestoreId||("gasto-"+i))+"/"+Date.now()+"-"+safeName(file.name);const res=await fetch(cfg().url+"/storage/v1/object/comprobantes/"+path,{method:"POST",headers:await headers("application/pdf"),body:file});if(!res.ok){const detail=await res.text();throw new Error(detail||("Error "+res.status))}x.receipt=true;x.receiptPath=path;x.receiptName=file.name;await persistReceipt(x);render();alert("Comprobante guardado correctamente.")}catch(err){console.error("Error al subir comprobante:",err);alert("No se pudo subir el comprobante. "+(err&&err.message?err.message:""));input.disabled=false}};
+window.viewReceipt=async function(i){const x=s.expenses[i];if(!x||!x.receiptPath)return;try{const res=await fetch(cfg().url+"/storage/v1/object/sign/comprobantes/"+x.receiptPath,{method:"POST",headers:await headers("application/json"),body:JSON.stringify({expiresIn:300})});if(!res.ok){const detail=await res.text();throw new Error(detail||("Error "+res.status))}const data=await res.json(),signed=data.signedURL||data.signedUrl;if(!signed)throw new Error("No se recibió el enlace temporal.");window.open(cfg().url+"/storage/v1"+signed,"_blank","noopener")}catch(err){console.error("Error al abrir comprobante:",err);alert("No se pudo abrir el comprobante. "+(err&&err.message?err.message:""))}};
+window.receiptCell=function(x,i){if(x.receiptPath)return '<div><b>PDF cargado</b><br><button class="split-btn" onclick="viewReceipt('+i+')">👁️ Ver PDF</button><br><label class="split-btn" style="display:inline-block">🔄 Reemplazar<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadReceipt('+i+',this)"></label></div>';return '<label class="split-btn" style="display:inline-block">📎 Subir PDF<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadReceipt('+i+',this)"></label>'}
+function installReceiptEditors(){const body=document.getElementById("expenses");if(!body)return;body.querySelectorAll("tr").forEach((tr,i)=>{const td=tr.children[7],x=s.expenses[i];if(!td||!x)return;td.innerHTML=window.receiptCell(x,i)})}
+const previousRender=window.render||render;window.render=render=function(){previousRender();installReceiptEditors()};installReceiptEditors();
+})();
+
+// Administración completa del catálogo de cuentas de gasto.
+(function(){
+function askLimit(current){const value=prompt("Límite (opcional). Déjalo vacío si no deseas límite:",current===null||current===undefined||Number(current)===0?"":current);if(value===null)return null;if(String(value).trim()==="")return 0;const n=Number(String(value).replace(/[$,\s]/g,""));if(!Number.isFinite(n)||n<0){alert("Escribe un límite válido o déjalo vacío.");return askLimit(current)}return n}
+function accountInUse(name){return s.expenses.some(x=>x.account===name)}
+window.addAccount=function(){const code=(prompt("Código de la cuenta:")||"").trim();if(!code)return;if(s.accounts.some(a=>String(a.code).toLowerCase()===code.toLowerCase())){alert("Ya existe una cuenta con ese código.");return}const name=(prompt("Nombre de la cuenta:")||"").trim();if(!name)return;const limit=askLimit(0);if(limit===null)return;const period=(prompt("Periodo (por ejemplo: Por compra, Diario, Semanal o Mensual):","Por compra")||"Por compra").trim();s.accounts.push({code,name,limit,period});save();render()};
+window.editAccount=function(i){const a=s.accounts[i];if(!a)return;const oldName=a.name;const code=prompt("Código de la cuenta:",a.code);if(code===null||!code.trim())return;if(s.accounts.some((x,n)=>n!==i&&String(x.code).toLowerCase()===code.trim().toLowerCase())){alert("Ya existe otra cuenta con ese código.");return}const name=prompt("Nombre de la cuenta:",a.name);if(name===null||!name.trim())return;const limit=askLimit(a.limit);if(limit===null)return;const period=prompt("Periodo:",a.period||"Por compra");if(period===null)return;a.code=code.trim();a.name=name.trim();a.limit=limit;a.period=period.trim()||"Por compra";if(oldName!==a.name)s.expenses.forEach(x=>{if(x.account===oldName)x.account=a.name});save();render()};
+window.deleteAccount=function(i){const a=s.accounts[i];if(!a)return;if(accountInUse(a.name)){alert("No se puede eliminar esta cuenta porque ya está asignada a uno o más gastos. Puedes editarla si necesitas cambiar su nombre o código.");return}if(!confirm("¿Eliminar la cuenta "+a.code+" - "+a.name+"?"))return;s.accounts.splice(i,1);save();render()};
+function installAccountManager(){const body=document.getElementById("accounts");if(!body)return;const table=body.closest("table"),head=table&&table.querySelector("thead tr");if(head&&!head.querySelector("th[data-account-actions]")){const th=document.createElement("th");th.dataset.accountActions="1";th.textContent="Acciones";head.appendChild(th)}body.innerHTML=s.accounts.map((a,i)=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+(Number(a.limit)>0?money(a.limit):'Sin límite')+'</td><td>'+esc(a.period||'Por compra')+'</td><td><button onclick="editAccount('+i+')">✏️ Editar</button> <button onclick="deleteAccount('+i+')">🗑️ Eliminar</button></td></tr>').join("")}
+const priorRender=window.render||render;window.render=render=function(){priorRender();installAccountManager()};installAccountManager();
+})();
+
+// Carga la administración de centros de costos después de las funciones principales.
+(function(){const script=document.createElement("script");script.src="center-admin.js";document.body.appendChild(script)})();
+
+// La administración de límites se hace desde Cuentas de gasto; se oculta la sección duplicada.
+(function(){
+const limitsPage=document.getElementById("limites");if(limitsPage)limitsPage.style.display="none";
+document.querySelectorAll("nav button").forEach(btn=>{if(btn.getAttribute("onclick")&&btn.getAttribute("onclick").includes("'limites'"))btn.remove()});
+})();
+
+// Carga la sección de reportes contables.
+(function(){const script=document.createElement("script");script.src="reports.js";document.body.appendChild(script)})();
+
+// Carga el resumen anual por empleado en el Dashboard.
+(function(){const script=document.createElement("script");script.src="dashboard-annual.js";document.body.appendChild(script)})();
+
+// Carga la conciliación manual del estado de cuenta en el Dashboard.
+(function(){const script=document.createElement("script");script.src="statement-summary.js";document.body.appendChild(script)})();
