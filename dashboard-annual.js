@@ -10,8 +10,18 @@ function parseExpenseDate(v){
   const d=new Date(t);
   return isNaN(d)?null:{month:d.getMonth(),year:d.getFullYear()};
 }
+function statementPeriod(x){
+  // El Dashboard debe reflejar el mes del estado de cuenta, no necesariamente el mes de la compra.
+  // Los movimientos importados juntos pertenecen al periodo del reporte; usamos la fecha de contabilización
+  // más reciente disponible en ese lote/estado de cuenta cuando existe statementPeriod.
+  if(x.statementPeriod){
+    const m=String(x.statementPeriod).match(/^(\d{4})-(\d{1,2})$/);
+    if(m)return {year:Number(m[1]),month:Number(m[2])-1};
+  }
+  return parseExpenseDate(x.postingDate||x.date);
+}
 function availableYears(){
-  const years=[...new Set(s.expenses.map(x=>parseExpenseDate(x.date||x.postingDate)).filter(Boolean).map(d=>d.year))].sort((a,b)=>b-a);
+  const years=[...new Set(s.expenses.map(statementPeriod).filter(Boolean).map(d=>d.year))].sort((a,b)=>b-a);
   return years.length?years:[new Date().getFullYear()];
 }
 function employeeNames(){
@@ -31,7 +41,7 @@ function annualData(year){
   names.forEach(name=>{
     const months=Array(12).fill(0);
     s.expenses.filter(x=>x.employee===name).forEach(x=>{
-      const d=parseExpenseDate(x.date||x.postingDate);
+      const d=statementPeriod(x);
       if(d&&d.year===year&&d.month>=0&&d.month<12)months[d.month]+=Number(x.amount||0);
     });
     months.forEach((v,i)=>totals[i]+=v);
