@@ -35,3 +35,6 @@ document.querySelectorAll("nav button").forEach(btn=>{if(btn.getAttribute("oncli
 
 // Carga el resumen anual por empleado en el Dashboard.
 (function(){const script=document.createElement("script");script.src="dashboard-annual.js";document.body.appendChild(script)})();
+
+// Carga la conciliación manual del estado de cuenta en el Dashboard.
+(function(){const script=document.createElement("script");script.src="statement-summary.js";document.body.appendChild(script)})();
