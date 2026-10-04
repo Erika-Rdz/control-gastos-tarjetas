@@ -29,3 +29,6 @@ const priorRender=window.render||render;window.render=render=function(){priorRen
 const limitsPage=document.getElementById("limites");if(limitsPage)limitsPage.style.display="none";
 document.querySelectorAll("nav button").forEach(btn=>{if(btn.getAttribute("onclick")&&btn.getAttribute("onclick").includes("'limites'"))btn.remove()});
 })();
+
+// Carga la sección de reportes contables.
+(function(){const script=document.createElement("script");script.src="reports.js";document.body.appendChild(script)})();
