@@ -23,4 +23,6 @@ function renderStatementSummary(){const host=document.getElementById("statementS
 window.changeStatementYear=function(){renderStatementSummary()};
 function install(){const dash=document.getElementById("dashboard");if(!dash||document.getElementById("statementSummaryHost"))return;ensureData();const box=document.createElement("div");box.className="box";box.id="statementSummaryHost";box.innerHTML='<h3>Resumen del estado de cuenta</h3><p>El saldo anterior se calcula desde el mes previo, pero puedes escribirlo manualmente cuando comiences a capturar a mitad de año. <b>Purchases & charges</b> se toma automáticamente de los gastos del periodo.</p><label><b>Año:</b> <select id="statementYear" onchange="changeStatementYear()"></select></label><div style="overflow-x:auto;margin-top:12px"><table><thead id="statementSummaryHead"></thead><tbody id="statementSummaryBody"></tbody></table></div>';dash.appendChild(box);renderStatementSummary()}
 const prev=window.render||render;window.render=render=function(){prev();install();renderStatementSummary()};install();
+// Carga la interfaz administrativa agrupada sin alterar la lógica principal.
+if(!document.querySelector('script[data-config-ui]')){const sc=document.createElement('script');sc.src='configuracion-ui.js';sc.dataset.configUi='1';document.body.appendChild(sc)}
 })();
