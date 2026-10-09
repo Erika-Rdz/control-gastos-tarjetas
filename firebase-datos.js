@@ -24,12 +24,16 @@ const db = getFirestore(app);
 auth.languageCode = "es"; // correos de Firebase en español
 
 // Campos que un empleado puede modificar en sus gastos (debe coincidir con las reglas de Firestore).
-const CAMPOS_EMPLEADO = ["concept", "account", "center", "centerSplits", "status", "receipt", "receiptPath", "receiptName"];
+const CAMPOS_EMPLEADO = ["concept", "account", "center", "centerSplits", "status", "receipt", "receiptPath", "receiptName",
+  "alcohol", "authStatus", "authRequestedAt", "authRequestedBy"];
+// Campos que el jefe inmediato puede modificar al autorizar o rechazar.
+const CAMPOS_JEFE = ["authStatus", "authBy", "authByName", "authAt", "authComment"];
 
 let datosCargados = false;              // evita guardar encima de Firebase si la carga falló
 let sincronizados = new Map();          // id del gasto -> última versión conocida en Firebase
 let accesosSincronizados = new Map();   // correo -> acceso guardado en Firebase
 let detenerEscucha = null;
+let escuchasSesion = [];          // escuchas del empleado / jefe
 let colaGuardado = Promise.resolve();
 let renderPendiente = false;
 
@@ -73,11 +77,26 @@ function correoDeEmpleado(nombre) {
   return emp ? norm(emp.email) : "";
 }
 
+// Jefe inmediato del empleado (nombre y correo), según Configuración → Jefes inmediatos.
+function jefeDeEmpleado(nombre) {
+  const emp = (s.employees || []).find(e => norm(e.name) === norm(nombre));
+  if (!emp || !emp.boss) return { name: "", email: "" };
+  const jefe = (s.bosses || []).find(b => norm(b.name) === norm(emp.boss));
+  if (!jefe || jefe.enabled === false || !norm(jefe.email)) return { name: emp.boss, email: "" };
+  return { name: jefe.name, email: norm(jefe.email) };
+}
+
 function accesosDeseados() {
   const m = new Map();
   (s.employees || []).forEach(e => {
     const email = correoDeEmpleado(e.name);
-    if (email && !m.has(email)) m.set(email, { email, employee: e.name, role: "Empleado", enabled: true });
+    if (email && !m.has(email)) m.set(email, { email, employee: e.name, role: "Empleado", isBoss: false, bossName: "", enabled: true });
+  });
+  (s.bosses || []).forEach(b => {
+    const email = norm(b.email);
+    if (!email || b.enabled === false) return;
+    if (m.has(email)) Object.assign(m.get(email), { isBoss: true, bossName: b.name });
+    else m.set(email, { email, employee: "", role: "Jefe", isBoss: true, bossName: b.name, enabled: true });
   });
   return m;
 }
@@ -88,6 +107,9 @@ function prepararGasto(x) {
   x.id = String(x.id).replace(/\//g, "_");
   if (typeof x.orden !== "number") x.orden = siguienteOrden();
   x.employeeEmail = correoDeEmpleado(x.employee);
+  const jefe = jefeDeEmpleado(x.employee);
+  x.bossEmail = jefe.email;
+  x.bossName = jefe.name;
   return limpio(x);
 }
 
@@ -128,7 +150,7 @@ window.firebaseLogin = async (email, password) => {
   return signInWithEmailAndPassword(auth, email, password);
 };
 window.firebaseLogout = () => signOut(auth);
-window.detenerSincronizacion = () => { if (detenerEscucha) { detenerEscucha(); detenerEscucha = null; } datosCargados = false; };
+window.detenerSincronizacion = () => { if (detenerEscucha) { detenerEscucha(); detenerEscucha = null; } escuchasSesion.forEach(f => f()); escuchasSesion = []; datosCargados = false; };
 
 // ---------- Contraseñas ----------
 // Recuperar: envía un correo con un enlace para crear una contraseña nueva.
@@ -324,33 +346,102 @@ function escucharGastos() {
   }, err => console.error("Error en la sincronización de gastos:", err));
 }
 
-// ---------- Empleados ----------
+// ---------- Empleados y jefes ----------
+const base = x => { const o = {}; CAMPOS_EMPLEADO.forEach(k => { o[k] = x[k] === undefined ? null : JSON.parse(JSON.stringify(x[k])); }); return o; };
+
+// Mantiene una lista (s.expenses o s.teamExpenses) al día con lo que cambia en Firebase.
+function escucharLista(q, obtenerLista, alCambiar) {
+  return onSnapshot(q, snap => {
+    let cambio = false;
+    const lista = obtenerLista();
+    snap.docChanges().forEach(ch => {
+      if (ch.doc.metadata.hasPendingWrites) return;
+      const id = ch.doc.id;
+      const i = lista.findIndex(x => x.id === id);
+      if (ch.type === "removed") { if (i >= 0) { lista.splice(i, 1); cambio = true; } return; }
+      const remoto = { ...ch.doc.data(), id, _firestoreId: id };
+      if (i >= 0) {
+        const x = lista[i];
+        if (iguales(limpio(x), limpio(remoto))) return;
+        Object.keys(x).forEach(k => { if (!k.startsWith("_") && !(k in remoto)) delete x[k]; });
+        Object.assign(x, remoto);
+        x._base = base(x);
+      } else {
+        remoto._base = base(remoto);
+        lista.push(remoto);
+      }
+      cambio = true;
+    });
+    if (cambio) { lista.sort((a, b) => (a.orden ?? 1e15) - (b.orden ?? 1e15)); alCambiar(); }
+  }, err => console.error("Error en la sincronización:", err));
+}
+
 window.cargarSesionEmpleado = async function (email) {
   email = norm(email);
   const acceso = await getDoc(doc(db, "accesos", email));
   if (!acceso.exists() || acceso.data().enabled === false) throw new Error("Este usuario no tiene acceso habilitado.");
   const info = acceso.data();
   const catalogo = await getDoc(doc(db, "catalogos", "empleados"));
-  const gastos = await getDocs(query(collection(db, "gastos"), where("employeeEmail", "==", email)));
   s.employees = [];
   s.userAccess = [];
   s.statementSummaries = {};
-  s.expenses = gastos.docs.map(d => ({ ...d.data(), id: d.id, _firestoreId: d.id }));
-  ordenar();
+  s.expenses = [];
+  s.teamExpenses = [];
   if (catalogo.exists()) {
     s.accounts = catalogo.data().accounts || [];
     s.centers = catalogo.data().centers || [];
   }
-  return { user: email, name: info.employee, employee: info.employee, role: "Empleado" };
+  escuchasSesion.forEach(f => f()); escuchasSesion = [];
+  if (info.employee) {
+    const q = query(collection(db, "gastos"), where("employeeEmail", "==", email));
+    const gastos = await getDocs(q);
+    s.expenses = gastos.docs.map(d => { const x = { ...d.data(), id: d.id, _firestoreId: d.id }; x._base = base(x); return x; });
+    ordenar();
+    escuchasSesion.push(escucharLista(q, () => s.expenses, renderSeguro));
+  }
+  if (info.isBoss) {
+    const q = query(collection(db, "gastos"), where("bossEmail", "==", email));
+    const equipo = await getDocs(q);
+    s.teamExpenses = equipo.docs.map(d => ({ ...d.data(), id: d.id, _firestoreId: d.id }));
+    s.teamExpenses.sort((a, b) => (a.orden ?? 1e15) - (b.orden ?? 1e15));
+    escuchasSesion.push(escucharLista(q, () => s.teamExpenses, () => { if (window.renderAutorizaciones) window.renderAutorizaciones(); }));
+  }
+  return {
+    user: email,
+    name: info.employee || info.bossName || email,
+    employee: info.employee || "",
+    role: "Empleado",
+    isBoss: !!info.isBoss,
+    bossName: info.bossName || ""
+  };
 };
 
-// El empleado solo guarda los campos que tiene permitidos.
+// El empleado guarda solo los campos permitidos que realmente cambió.
 window.guardarGastoEmpleado = async function (x) {
   const id = x && (x._firestoreId || x.id);
   if (!id) return;
+  const previo = x._base || {};
   const cambios = {};
-  CAMPOS_EMPLEADO.forEach(k => { cambios[k] = x[k] === undefined ? deleteField() : JSON.parse(JSON.stringify(x[k])); });
+  CAMPOS_EMPLEADO.forEach(k => {
+    const valor = x[k] === undefined ? null : x[k];
+    if (!iguales(previo[k], valor)) cambios[k] = x[k] === undefined ? deleteField() : JSON.parse(JSON.stringify(x[k]));
+  });
+  if (!Object.keys(cambios).length) return;
   await updateDoc(doc(db, "gastos", id), cambios);
+  x._base = base(x);
+};
+
+// El jefe autoriza o rechaza un gasto de su equipo.
+window.decidirAutorizacion = async function (id, decision, comentario) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Tu sesión no está activa.");
+  if (!["Autorizada", "Rechazada"].includes(decision)) throw new Error("Decisión no válida.");
+  let nombre = u.email;
+  try { nombre = JSON.parse(sessionStorage.getItem("controlGastosSession") || "{}").bossName || u.email; } catch (e) {}
+  const cambios = { authStatus: decision, authBy: norm(u.email), authByName: nombre, authAt: new Date().toISOString(), authComment: comentario || "" };
+  await updateDoc(doc(db, "gastos", id), cambios);
+  const x = (s.teamExpenses || []).find(g => g.id === id);
+  if (x) Object.assign(x, cambios);
 };
 
 // ---------- Restaurar sesión al recargar la página ----------
