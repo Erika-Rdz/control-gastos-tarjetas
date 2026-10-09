@@ -5,7 +5,7 @@
 // La seguridad real la ponen las reglas de Firestore (archivo reglas-firestore.txt).
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where, onSnapshot, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 const ADMIN_EMAIL = "accountspayable@peninsulasteel.com";
@@ -21,6 +21,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+auth.languageCode = "es"; // correos de Firebase en español
 
 // Campos que un empleado puede modificar en sus gastos (debe coincidir con las reglas de Firestore).
 const CAMPOS_EMPLEADO = ["concept", "account", "center", "centerSplits", "status", "receipt", "receiptPath", "receiptName"];
@@ -128,6 +129,79 @@ window.firebaseLogin = async (email, password) => {
 };
 window.firebaseLogout = () => signOut(auth);
 window.detenerSincronizacion = () => { if (detenerEscucha) { detenerEscucha(); detenerEscucha = null; } datosCargados = false; };
+
+// ---------- Contraseñas ----------
+// Recuperar: envía un correo con un enlace para crear una contraseña nueva.
+window.olvideContrasena = async function () {
+  const campo = document.getElementById("loginUser");
+  let email = norm(campo && campo.value);
+  if (!email) email = norm(prompt("Escribe tu correo para enviarte el enlace de recuperación:") || "");
+  if (!email) return;
+  try {
+    await sendPasswordResetEmail(auth, email);
+    alert("Si el correo " + email + " está registrado, en unos minutos recibirás un mensaje para crear una contraseña nueva.\n\nRevisa también la carpeta de correo no deseado (spam).");
+  } catch (e) {
+    console.error(e);
+    const msg = e.code === "auth/invalid-email" ? "El correo no tiene un formato válido."
+      : e.code === "auth/too-many-requests" ? "Se hicieron demasiados intentos. Espera unos minutos e inténtalo de nuevo."
+      : "No se pudo enviar el correo. " + (e.code || e.message);
+    alert(msg);
+  }
+};
+
+// Cambiar: ventana para escribir la contraseña actual y la nueva.
+window.abrirCambioContrasena = function () {
+  let dlg = document.getElementById("dlgContrasena");
+  if (!dlg) {
+    dlg = document.createElement("dialog");
+    dlg.id = "dlgContrasena";
+    dlg.style.cssText = "border:0;border-radius:14px;padding:26px;width:min(380px,92vw);box-shadow:0 20px 55px rgba(0,0,0,.25)";
+    dlg.innerHTML = '<h3 style="margin-top:0">Cambiar contraseña</h3>'
+      + '<label>Contraseña actual</label><input id="pwActual" type="password" autocomplete="current-password">'
+      + '<label>Contraseña nueva (mínimo 8 caracteres)</label><input id="pwNueva" type="password" autocomplete="new-password">'
+      + '<label>Repite la contraseña nueva</label><input id="pwNueva2" type="password" autocomplete="new-password">'
+      + '<div id="pwError" class="login-error"></div>'
+      + '<div style="display:flex;gap:10px;margin-top:16px"><button type="button" class="primary" id="pwGuardar" style="text-align:center">Guardar</button>'
+      + '<button type="button" id="pwCancelar" style="text-align:center;border:1px solid #cbd5e1">Cancelar</button></div>';
+    document.body.appendChild(dlg);
+    dlg.querySelector("#pwCancelar").onclick = () => dlg.close();
+    dlg.querySelector("#pwGuardar").onclick = guardarNuevaContrasena;
+  }
+  ["pwActual", "pwNueva", "pwNueva2"].forEach(id => { dlg.querySelector("#" + id).value = ""; });
+  dlg.querySelector("#pwError").style.display = "none";
+  dlg.showModal();
+};
+
+async function guardarNuevaContrasena() {
+  const dlg = document.getElementById("dlgContrasena");
+  const err = dlg.querySelector("#pwError");
+  const boton = dlg.querySelector("#pwGuardar");
+  const actual = dlg.querySelector("#pwActual").value;
+  const nueva = dlg.querySelector("#pwNueva").value;
+  const nueva2 = dlg.querySelector("#pwNueva2").value;
+  const mostrar = m => { err.textContent = m; err.style.display = "block"; };
+  if (!actual || !nueva) return mostrar("Llena todos los campos.");
+  if (nueva.length < 8) return mostrar("La contraseña nueva debe tener al menos 8 caracteres.");
+  if (nueva !== nueva2) return mostrar("Las contraseñas nuevas no coinciden.");
+  if (nueva === actual) return mostrar("La contraseña nueva debe ser diferente a la actual.");
+  const u = auth.currentUser;
+  if (!u) return mostrar("Tu sesión no está activa. Vuelve a iniciar sesión.");
+  boton.disabled = true;
+  try {
+    await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, actual));
+    await updatePassword(u, nueva);
+    dlg.close();
+    alert("Tu contraseña se cambió correctamente.");
+  } catch (e) {
+    console.error(e);
+    mostrar(e.code === "auth/wrong-password" || e.code === "auth/invalid-credential" ? "La contraseña actual no es correcta."
+      : e.code === "auth/weak-password" ? "La contraseña nueva es muy débil."
+      : e.code === "auth/too-many-requests" ? "Demasiados intentos. Espera unos minutos."
+      : "No se pudo cambiar la contraseña. " + (e.code || e.message));
+  } finally {
+    boton.disabled = false;
+  }
+}
 
 // ---------- Administradora ----------
 window.cargarDatosAdmin = async function () {
