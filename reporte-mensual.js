@@ -389,7 +389,7 @@
       + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">`
       + `<button class="split-btn" onclick="reporteDescargar('xlsx')">⬇️ Descargar Excel</button>`
       + `<button class="split-btn" onclick="reporteDescargar('pdf')">⬇️ Descargar PDF con comprobantes</button>`
-      + (enviado ? "" : `<button class="primary" style="width:auto;display:inline-block" ${rev.bloquea ? "disabled title=\"Primero clasifica todos los gastos y resuelve las autorizaciones\"" : ""} onclick="reporteFirmar()">✍️ Firmar y enviar</button>`)
+      + (enviado ? "" : `<button class="primary" style="width:auto;display:inline-block;${rev.bloquea ? "opacity:.55" : ""}" ${rev.bloquea ? "title=\"Primero clasifica todos los gastos y resuelve las autorizaciones\"" : ""} onclick="reporteFirmar()">✍️ Firmar y enviar</button>`)
       + `</div><div id="reporteAviso" style="margin-top:8px;color:#5F6E70"></div>`;
   }
 
@@ -409,7 +409,13 @@
 
   window.reporteFirmar = function () {
     const rep = armarReporte(mesElegido), rev = revisar(rep);
-    if (rev.bloquea) { alert("Antes de enviar, clasifica todos los gastos y resuelve las autorizaciones pendientes."); return; }
+    if (rev.bloquea) {
+      const partes = [];
+      if (rev.sinClasificar) partes.push("- " + rev.sinClasificar + " gasto(s) sin clasificar (falta concepto, cuenta o centro de costos).");
+      if (rev.autorizacion) partes.push("- " + rev.autorizacion + " gasto(s) con autorización del jefe pendiente o rechazada.");
+      alert("Todavía no puedes firmar el reporte de " + etiquetaMes(mesElegido) + ":\n\n" + partes.join("\n") + "\n\nCorrígelos en Mis gastos (filtra por este mes) y vuelve aquí.");
+      return;
+    }
     let dlg = document.getElementById("dlgFirma");
     if (!dlg) {
       dlg = document.createElement("dialog"); dlg.id = "dlgFirma";
