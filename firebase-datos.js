@@ -6,7 +6,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where, onSnapshot, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where, onSnapshot, writeBatch, deleteField, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 const ADMIN_EMAIL = "accountspayable@peninsulasteel.com";
 const firebaseConfig = {
@@ -422,7 +422,8 @@ window.cargarSesionEmpleado = async function (email) {
     employee: info.employee || "",
     role: "Empleado",
     isBoss: !!info.isBoss,
-    bossName: info.bossName || ""
+    bossName: info.bossName || "",
+    dept: info.dept || ""
   };
 };
 
@@ -452,6 +453,33 @@ window.decidirAutorizacion = async function (id, decision, comentario) {
   await updateDoc(doc(db, "gastos", id), cambios);
   const x = (s.teamExpenses || []).find(g => g.id === id);
   if (x) Object.assign(x, cambios);
+};
+
+// ---------- Reporte mensual firmado ----------
+// El empleado firma y envía su reporte del mes; queda una copia fija de las líneas.
+window.enviarReporteMensual = async function (datos) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Tu sesión no está activa.");
+  const email = norm(u.email);
+  const id = email + "_" + datos.period;
+  const registro = JSON.parse(JSON.stringify({ ...datos, employeeEmail: email, status: "Enviado", reviewComment: "" }));
+  registro.signedAtServer = serverTimestamp();
+  await setDoc(doc(db, "reportes", id), registro);
+  return id;
+};
+window.misReportesMensuales = async function () {
+  const u = auth.currentUser;
+  if (!u) return [];
+  const r = await getDocs(query(collection(db, "reportes"), where("employeeEmail", "==", norm(u.email))));
+  return r.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+window.reportesMensualesRecibidos = async function () {
+  const r = await getDocs(collection(db, "reportes"));
+  return r.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+window.cambiarEstadoReporte = async function (id, status, comentario) {
+  const u = auth.currentUser;
+  await updateDoc(doc(db, "reportes", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedAt: new Date().toISOString() });
 };
 
 // ---------- Restaurar sesión al recargar la página ----------
