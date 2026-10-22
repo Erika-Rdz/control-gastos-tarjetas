@@ -39,7 +39,12 @@
   function colorearEstados() {
     const body = document.getElementById("expenses");
     if (!body) return;
+    // Importe solo como número (sin "USD") para poder copiarlo y sumarlo en Excel.
+    const th = document.querySelector("#gastos thead th:nth-child(4)");
+    if (th && th.textContent.trim() === "Importe") th.textContent = "Importe (USD)";
     [...body.children].forEach(tr => {
+      const imp = tr.children[3];
+      if (imp && /^USD\s/.test(imp.textContent.trim())) imp.textContent = imp.textContent.trim().replace(/^USD\s*/, "");
       const td = tr.children[8];
       if (!td) return;
       const t = td.textContent.trim();
