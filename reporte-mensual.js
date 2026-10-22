@@ -12,6 +12,7 @@
   let mesElegido = "";
   let misEnvios = [];
   let recibidos = [];
+  let cargado = false;
 
   // ---------- Utilidades ----------
   function session() { try { return JSON.parse(sessionStorage.getItem("controlGastosSession") || "null"); } catch (e) { return null; } }
@@ -475,7 +476,6 @@
   };
 
   // ---------- Integración ----------
-  let cargado = false;
   function vigilar() {
     const body = document.getElementById("expenses");
     if (!body || body._reporteMensual) return;
@@ -488,6 +488,20 @@
     if (esEmpleado() && document.getElementById("employeeReports") && !document.getElementById("reporteMensualBox")) pintarEmpleado();
   }).observe(main, { childList: true });
 
+  // Respaldo: revisa cada segundo que el recuadro exista (por si la página se creó antes que este archivo).
+  setInterval(() => {
+    try {
+      if (esEmpleado() && document.getElementById("employeeReports") && !document.getElementById("reporteMensualBox")) {
+        pintarEmpleado();
+        if (!cargado && window.firebaseAuth && window.firebaseAuth.currentUser) { cargado = true; refrescarEnvios(); }
+      }
+      if (esAdmin() && document.getElementById("reportes") && !document.getElementById("reportesRecibidosBox")) {
+        pintarAdmin();
+        if (!cargado && window.firebaseAuth && window.firebaseAuth.currentUser) { cargado = true; refrescarRecibidos(); }
+      }
+    } catch (e) { console.error("Reporte mensual:", e); }
+  }, 1000);
+
   const anterior = window.render || render;
   window.render = render = function () {
     anterior(); vigilar();
@@ -495,6 +509,7 @@
       cargado = true;
       if (esEmpleado()) refrescarEnvios(); else refrescarRecibidos();
     }
-    if (esEmpleado()) { pintarEmpleado(); bloquearFilas(); } else pintarAdmin();
+    try { if (esEmpleado()) { pintarEmpleado(); bloquearFilas(); } else pintarAdmin(); }
+    catch (e) { console.error("Reporte mensual:", e); }
   };
 })();
