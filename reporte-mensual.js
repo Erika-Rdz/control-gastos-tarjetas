@@ -186,14 +186,22 @@
   }
 
   // ---------- PDF con comprobantes ----------
+  // Descarga el comprobante igual que el botón "Ver PDF": pide un enlace firmado y lo baja.
   async function comprobante(path) {
     const cfg = window.SUPABASE_CONFIG;
     const u = window.firebaseAuth && window.firebaseAuth.currentUser;
     if (!cfg || !u) throw new Error("Sesión no activa");
     const token = await u.getIdToken(false);
-    const r = await fetch(cfg.url + "/storage/v1/object/authenticated/comprobantes/" + path, { headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + token } });
-    if (!r.ok) throw new Error("Error " + r.status);
-    return new Uint8Array(await r.arrayBuffer());
+    const h = { apikey: cfg.publishableKey, Authorization: "Bearer " + token, "Content-Type": "application/json" };
+    const r = await fetch(cfg.url + "/storage/v1/object/sign/comprobantes/" + path, { method: "POST", headers: h, body: JSON.stringify({ expiresIn: 120 }) });
+    if (!r.ok) throw new Error("Permiso " + r.status + " " + (await r.text()).slice(0, 120));
+    const data = await r.json();
+    let url = data.signedURL || data.signedUrl || "";
+    if (!url) throw new Error("Sin enlace firmado");
+    if (!/^https?:/.test(url)) url = cfg.url + "/storage/v1" + (url.startsWith("/") ? "" : "/") + url;
+    const archivo = await fetch(url);
+    if (!archivo.ok) throw new Error("Descarga " + archivo.status);
+    return new Uint8Array(await archivo.arrayBuffer());
   }
 
   async function pdf(rep, conComprobantes, aviso) {
@@ -315,6 +323,7 @@
           const p = docu.addPage([W, H]);
           p.drawText("No se pudo incluir este comprobante:", { x: M, y: H - 80, size: 12, font: neg, color: rgb(.63, .23, .23) });
           p.drawText(corto(etiqueta, reg, 10, W - 2 * M), { x: M, y: H - 100, size: 10, font: reg });
+          p.drawText(corto("Detalle: " + (e && e.message ? e.message : e), reg, 8, W - 2 * M), { x: M, y: H - 118, size: 8, font: reg, color: gris });
         }
       }
     }
@@ -334,9 +343,17 @@
     [...body.children].forEach((tr, i) => {
       const x = s.expenses[i];
       const cerrado = !!(x && meses.has(periodo(x)));
-      tr.querySelectorAll("input,select,button").forEach(el => { if (cerrado) { el.disabled = true; el.title = "Este mes ya se envió firmado"; } });
-      tr.style.opacity = cerrado ? ".75" : "";
+      tr.querySelectorAll("input,select,button").forEach(el => { el.disabled = cerrado; el.title = cerrado ? "Este mes ya se envió firmado" : ""; });
+      tr.querySelectorAll("label").forEach(el => { el.style.pointerEvents = cerrado ? "none" : ""; el.style.opacity = cerrado ? ".45" : ""; });
+      tr.style.opacity = cerrado ? ".8" : "";
     });
+    // Aviso arriba de la tabla con los meses cerrados
+    const sec = document.getElementById("gastos");
+    if (!sec) return;
+    let aviso = document.getElementById("avisoMesCerrado");
+    if (!meses.size) { if (aviso) aviso.remove(); return; }
+    if (!aviso) { aviso = document.createElement("div"); aviso.id = "avisoMesCerrado"; aviso.className = "box"; aviso.style.cssText = "border-left:4px solid #B8955A;padding:10px 14px"; const h = sec.querySelector("p"); if (h) h.after(aviso); else sec.prepend(aviso); }
+    aviso.innerHTML = "🔒 <b>" + [...meses].sort().map(etiquetaMes).join(", ") + "</b>: reporte ya firmado y enviado. Esos gastos ya no se pueden modificar; si necesitas corregir algo, pide a Cuentas por Pagar que te devuelva el reporte.";
   }
 
   async function refrescarEnvios() {
