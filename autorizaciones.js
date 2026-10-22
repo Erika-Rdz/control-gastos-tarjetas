@@ -220,6 +220,10 @@
     (s.employees || []).forEach(e => { if (norm(e.boss) === norm(b.name)) e.boss = ""; });
     s.bosses.splice(i, 1); save(); render();
   };
+  window.asignarDepartamento = function (empleado, dept) {
+    const e = (s.employees || []).find(e => e.name === empleado); if (!e) return;
+    e.dept = dept; save(); render();
+  };
   window.asignarJefe = function (empleado, jefe) {
     const e = (s.employees || []).find(e => e.name === empleado); if (!e) return;
     e.boss = jefe; save(); render();
@@ -238,6 +242,10 @@
       if (accesos) accesos.after(box); else section.appendChild(box);
     }
     const nombres = s.bosses.map(b => b.name);
+    const sinAcentos = v => norm(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const deptos = [];
+    (s.centers || []).forEach(c => { if (c.dept && !deptos.some(d => sinAcentos(d) === sinAcentos(c.dept))) deptos.push(c.dept); });
+    deptos.sort((a, b) => a.localeCompare(b));
     box.innerHTML = `<h3>👔 Jefes inmediatos</h3>`
       + `<p>Los jefes autorizan los gastos de comidas con consumo <b>personal</b> de bebidas alcohólicas. Cada jefe necesita además su usuario y contraseña en Firebase → Authentication.</p>`
       + `<button class="primary" style="display:inline-block;width:auto" onclick="agregarJefe()">+ Agregar jefe</button>`
@@ -246,14 +254,19 @@
         + `<td><button class="split-btn" onclick="editarJefe(${i})">Editar</button> <button class="split-btn" onclick="activarJefe(${i})">${b.enabled === false ? "Activar" : "Desactivar"}</button> <button class="split-btn" onclick="quitarJefe(${i})">Quitar</button></td></tr>`).join("")
         || '<tr><td colspan="4">Todavía no hay jefes registrados.</td></tr>')
       + `</tbody></table>`
-      + `<h4 style="margin-top:20px">Jefe inmediato de cada empleado</h4>`
-      + `<table><thead><tr><th>Empleado</th><th>Jefe inmediato</th></tr></thead><tbody>`
+      + `<h4 style="margin-top:20px">Departamento y jefe inmediato de cada empleado</h4>`
+      + `<p style="margin-top:0">El empleado solo verá los centros de costos de su departamento. Si no tiene departamento, verá todos.</p>`
+      + `<table><thead><tr><th>Empleado</th><th>Departamento</th><th>Jefe inmediato</th></tr></thead><tbody>`
       + ((s.employees || []).map(e => {
         const actual = e.boss || "";
         const extra = actual && !nombres.some(n => norm(n) === norm(actual)) ? `<option value="${esc(actual)}" selected>${esc(actual)} (sin acceso)</option>` : "";
-        return `<tr><td>${esc(e.name)}</td><td><select class="expense-select" onchange="asignarJefe('${esc(q(e.name))}',this.value)"><option value="">Sin jefe asignado</option>${extra}`
+        const d = e.dept || "";
+        const dExtra = d && !deptos.some(x => sinAcentos(x) === sinAcentos(d)) ? `<option value="${esc(d)}" selected>${esc(d)} (sin centros)</option>` : "";
+        const selDept = `<select class="expense-select" onchange="asignarDepartamento('${esc(q(e.name))}',this.value)"><option value="">Sin departamento</option>${dExtra}`
+          + deptos.map(x => `<option value="${esc(x)}" ${sinAcentos(x) === sinAcentos(d) ? "selected" : ""}>${esc(x)}</option>`).join("") + `</select>`;
+        return `<tr><td>${esc(e.name)}</td><td>${selDept}</td><td><select class="expense-select" onchange="asignarJefe('${esc(q(e.name))}',this.value)"><option value="">Sin jefe asignado</option>${extra}`
           + nombres.map(n => `<option value="${esc(n)}" ${norm(n) === norm(actual) ? "selected" : ""}>${esc(n)}</option>`).join("") + `</select></td></tr>`;
-      }).join("") || '<tr><td colspan="2">Primero agrega empleados.</td></tr>')
+      }).join("") || '<tr><td colspan="3">Primero agrega empleados.</td></tr>')
       + `</tbody></table>`;
   }
 

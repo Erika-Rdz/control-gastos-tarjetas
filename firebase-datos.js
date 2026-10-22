@@ -90,7 +90,7 @@ function accesosDeseados() {
   const m = new Map();
   (s.employees || []).forEach(e => {
     const email = correoDeEmpleado(e.name);
-    if (email && !m.has(email)) m.set(email, { email, employee: e.name, role: "Empleado", isBoss: false, bossName: "", enabled: true });
+    if (email && !m.has(email)) m.set(email, { email, employee: e.name, dept: e.dept || "", role: "Empleado", isBoss: false, bossName: "", enabled: true });
   });
   (s.bosses || []).forEach(b => {
     const email = norm(b.email);
@@ -391,6 +391,7 @@ window.cargarSesionEmpleado = async function (email) {
     s.accounts = catalogo.data().accounts || [];
     s.centers = catalogo.data().centers || [];
   }
+  const centrosTodos = s.centers;
   escuchasSesion.forEach(f => f()); escuchasSesion = [];
   if (info.employee) {
     const q = query(collection(db, "gastos"), where("employeeEmail", "==", email));
@@ -398,6 +399,15 @@ window.cargarSesionEmpleado = async function (email) {
     s.expenses = gastos.docs.map(d => { const x = { ...d.data(), id: d.id, _firestoreId: d.id }; x._base = base(x); return x; });
     ordenar();
     escuchasSesion.push(escucharLista(q, () => s.expenses, renderSeguro));
+  }
+  // Cada empleado solo ve los centros de costos de su departamento
+  // (más los que ya tenga usados en sus gastos, para no perderlos).
+  const sinAcentos = v => norm(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (info.employee && info.dept) {
+    const usados = new Set();
+    s.expenses.forEach(x => { if (x.center) usados.add(x.center); (x.centerSplits || []).forEach(p => usados.add(p.center)); });
+    const propios = centrosTodos.filter(c => sinAcentos(c.dept) === sinAcentos(info.dept) || usados.has(c.name));
+    if (propios.length) s.centers = propios;
   }
   if (info.isBoss) {
     const q = query(collection(db, "gastos"), where("bossEmail", "==", email));
