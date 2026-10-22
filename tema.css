@@ -1,0 +1,74 @@
+/* Tema "Acero y salvia" — formal, fresco y elegante.
+   Pizarra (acero) para la estructura, salvia para lo activo y un hilo de latón como detalle.
+   Se carga al final de la página para que sus colores tengan prioridad. */
+@import url("https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap");
+
+:root{
+  --pizarra:#1D3B45;
+  --pizarra-2:#26505C;
+  --salvia:#3E8E7E;
+  --salvia-suave:#E6F1EE;
+  --laton:#B8955A;
+  --fondo:#F3F6F5;
+  --linea:#D9E2E0;
+  --texto:#1F2B2E;
+  --texto-2:#5F6E70;
+  --encabezado-tabla:#EAF0EE;
+}
+
+body{font-family:"Public Sans","Segoe UI",Arial,sans-serif;background:var(--fondo);color:var(--texto);font-feature-settings:"tnum" 1}
+h2{font-weight:600;letter-spacing:-.01em;color:var(--pizarra)}
+h3,h4{font-weight:600;color:var(--pizarra)}
+main p{color:var(--texto-2)}
+
+/* Barra superior: el único elemento con carácter, con un hilo de latón */
+header{background:var(--pizarra);border-bottom:3px solid var(--laton)}
+header b{font-weight:600;letter-spacing:.01em}
+.logout{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.45);font-weight:500}
+.logout:hover{background:rgba(255,255,255,.12)}
+
+/* Menú lateral */
+nav{background:#fff;border-right:1px solid var(--linea)}
+nav button{color:var(--texto);border-left:3px solid transparent;border-radius:0 8px 8px 0}
+nav button:hover{background:var(--salvia-suave);color:var(--pizarra);font-weight:normal}
+nav button.active{background:var(--salvia-suave);color:var(--pizarra);font-weight:600;border-left-color:var(--laton)}
+
+/* Tarjetas y recuadros */
+.card,.box{border:1px solid var(--linea);border-radius:10px;box-shadow:none}
+.num{color:var(--pizarra);font-weight:600}
+
+/* Tablas */
+th{background:var(--encabezado-tabla);color:var(--pizarra);font-weight:600}
+td{border-bottom-color:var(--linea)}
+body.vista-hoja .hoja-box th,body.vista-hoja .hoja-box th:first-child{background:var(--encabezado-tabla);border-bottom-color:#C3D1CD}
+body.vista-hoja .hoja-box th,body.vista-hoja .hoja-box td{border-right-color:var(--linea);border-bottom-color:var(--linea)}
+body.vista-hoja .hoja-box td:first-child{background:#F7FAF9}
+body.vista-hoja .hoja-box tbody tr:nth-child(even) td{background:#FAFCFB}
+body.vista-hoja .hoja-box tbody tr:nth-child(even) td:first-child{background:#F2F6F5}
+body.vista-hoja .hoja-box tbody tr:hover td{background:var(--salvia-suave)}
+body.vista-hoja .hoja-box input:focus,body.vista-hoja .hoja-box select:focus{outline-color:var(--salvia)}
+
+/* Botones y campos */
+button.primary{background:var(--pizarra);font-weight:500}
+button.primary:hover{background:var(--pizarra-2)}
+.split-btn{border-color:#B9C7C4;color:var(--pizarra)}
+.split-btn:hover{border-color:var(--salvia);background:var(--salvia-suave)}
+input,select{border-color:#C9D4D1}
+input:focus,select:focus{outline:2px solid var(--salvia);outline-offset:1px;border-color:var(--salvia)}
+.pending-field{border-color:#D8B26A;background:#FBF6EC}
+.link-btn{color:var(--salvia)}
+
+/* Estados */
+.estado-ok{color:#2F7A68}
+.estado-pend{color:#A9741F}
+.estado-mal{color:#A13A3A}
+
+/* Inicio de sesión */
+.login-screen{background:var(--pizarra)}
+.login-card{border-radius:12px;border-top:4px solid var(--laton);box-shadow:0 24px 60px rgba(10,30,36,.35)}
+.login-card h1{color:var(--pizarra);font-weight:600;letter-spacing:-.01em}
+.login-card p{color:var(--texto-2)}
+
+@media (prefers-reduced-motion:no-preference){
+  nav button,button.primary,.split-btn,.logout{transition:background-color .15s ease,border-color .15s ease}
+}
