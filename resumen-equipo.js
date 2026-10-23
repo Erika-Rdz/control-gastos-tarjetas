@@ -1,12 +1,20 @@
-// Resumen del equipo (solo consulta) para el jefe inmediato:
-// cuentas de gasto en filas, empleados en columnas, con importes por mes según la Tran Date.
+// Resumen por cuenta y empleado (solo consulta).
+// - Jefe inmediato: "Resumen del equipo" con los gastos de su equipo.
+// - Administradora: "Resumen por empleado" con todos los empleados, filtrable por mes y departamento.
+// Solo se suman los gastos que ya tienen cuenta asignada; los demás se indican aparte.
 (function () {
   const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-  let mesElegido = "";
-  let detalle = null; // { cuenta, empleado }
+  const estado = {
+    equipo: { mes: "", depto: "", detalle: null },
+    admin: { mes: "", depto: "", detalle: null }
+  };
 
   function session() { try { return JSON.parse(sessionStorage.getItem("controlGastosSession") || "null"); } catch (e) { return null; } }
+  const esJefe = () => !!session()?.isBoss;
+  const esAdmin = () => session()?.role === "Administrador";
   const q = v => String(v || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const sinAcentos = v => String(v || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const num = v => Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   function periodo(x) {
     const t = String(x.date || "").trim();
@@ -17,93 +25,114 @@
     return "";
   }
   const etiquetaMes = p => { const [y, m] = p.split("-"); return (MESES[Number(m) - 1] || m) + " " + y; };
-  const SIN = "__sin__";
+  const deptoDe = nombre => ((s.employees || []).find(e => e.name === nombre) || {}).dept || "";
 
-  function asegurarPagina() {
+  // ---------- Páginas y botones del menú ----------
+  function asegurar(id, titulo, texto, boxId, botonId, etiqueta, accion, visible) {
     const main = document.querySelector("main");
-    if (main && !document.getElementById("resumenEquipo")) {
+    if (main && !document.getElementById(id)) {
       const sec = document.createElement("section");
-      sec.id = "resumenEquipo";
-      sec.className = "page";
-      sec.innerHTML = '<h2>Resumen de mi equipo</h2><p>Consulta de lo que tu equipo ha clasificado en cada cuenta de gasto. Esta pantalla es solo de lectura.</p><div class="box" id="resumenEquipoBox"></div>';
+      sec.id = id; sec.className = "page";
+      sec.innerHTML = `<h2>${titulo}</h2><p>${texto}</p><div class="box" id="${boxId}"></div>`;
       main.appendChild(sec);
     }
     const nav = document.querySelector("nav");
-    let boton = document.getElementById("navResumenEquipo");
-    if (nav && !boton) {
-      boton = document.createElement("button");
-      boton.id = "navResumenEquipo";
-      boton.innerHTML = "📊 Resumen del equipo";
-      boton.setAttribute("onclick", "showEmployeePage('resumenEquipo',this)");
-      nav.appendChild(boton);
+    let b = document.getElementById(botonId);
+    if (nav && !b) {
+      b = document.createElement("button");
+      b.id = botonId; b.innerHTML = etiqueta; b.setAttribute("onclick", accion);
+      nav.appendChild(b);
     }
-    if (boton) boton.style.display = session()?.isBoss ? "block" : "none";
+    if (b) b.style.display = visible ? "block" : "none";
+  }
+  function asegurarPaginas() {
+    asegurar("resumenEquipo", "Resumen de mi equipo", "Lo que tu equipo ha clasificado en cada cuenta de gasto. Pantalla solo de consulta.",
+      "resumenEquipoBox", "navResumenEquipo", "📊 Resumen del equipo", "showEmployeePage('resumenEquipo',this)", esJefe());
+    asegurar("resumenAdmin", "Resumen por empleado", "Lo que cada empleado ha clasificado en cada cuenta de gasto. Pantalla solo de consulta.",
+      "resumenAdminBox", "navResumenAdmin", "📊 Resumen por empleado", "show('resumenAdmin',this);renderResumenAdmin()", esAdmin());
   }
 
-  window.resumenElegirMes = function (v) { mesElegido = v || ""; detalle = null; window.renderResumenEquipo(); };
-  window.resumenVerDetalle = function (cuenta, empleado) { detalle = { cuenta, empleado }; window.renderResumenEquipo(); };
-
-  window.renderResumenEquipo = function () {
-    const box = document.getElementById("resumenEquipoBox");
-    if (!box || !session()?.isBoss) return;
-    const todos = s.teamExpenses || [];
+  // ---------- Tabla ----------
+  function tabla(clave, todos, conDepto) {
+    const st = estado[clave];
     const meses = [...new Set(todos.map(periodo).filter(Boolean))].sort().reverse();
-    if (mesElegido && !meses.includes(mesElegido)) mesElegido = "";
-    const lista = todos.filter(x => !mesElegido || periodo(x) === mesElegido);
+    if (st.mes && !meses.includes(st.mes)) st.mes = "";
+    const deptos = [];
+    if (conDepto) todos.forEach(x => { const d = deptoDe(x.employee); if (d && !deptos.some(z => sinAcentos(z) === sinAcentos(d))) deptos.push(d); });
+    deptos.sort((a, b) => a.localeCompare(b));
+
+    const delPeriodo = todos.filter(x => (!st.mes || periodo(x) === st.mes) && (!st.depto || sinAcentos(deptoDe(x.employee)) === sinAcentos(st.depto)));
+    const lista = delPeriodo.filter(x => x.account);
+    const pendientes = delPeriodo.filter(x => !x.account);
 
     const empleados = [...new Set(lista.map(x => x.employee).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-    const claveCuenta = x => x.account || SIN;
-    const usadas = new Set(lista.map(claveCuenta));
+    const usadas = new Set(lista.map(x => x.account));
     const cuentas = (s.accounts || []).filter(a => usadas.has(a.name)).map(a => ({ clave: a.name, codigo: a.code || "", nombre: a.name }));
-    usadas.forEach(c => { if (c !== SIN && !cuentas.some(a => a.clave === c)) cuentas.push({ clave: c, codigo: "", nombre: c }); });
-    if (usadas.has(SIN)) cuentas.push({ clave: SIN, codigo: "", nombre: "Sin clasificar" });
+    usadas.forEach(c => { if (!cuentas.some(a => a.clave === c)) cuentas.push({ clave: c, codigo: "", nombre: c }); });
+    cuentas.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
 
-    const suma = (cuenta, empleado) => lista
-      .filter(x => (!cuenta || claveCuenta(x) === cuenta) && (!empleado || x.employee === empleado))
-      .reduce((t, x) => t + Number(x.amount || 0), 0);
-    const celda = (cuenta, empleado, negrita) => {
-      const v = suma(cuenta, empleado);
+    const suma = (cuenta, emp) => lista.filter(x => (!cuenta || x.account === cuenta) && (!emp || x.employee === emp)).reduce((t, x) => t + Number(x.amount || 0), 0);
+    const celda = (cuenta, emp, negrita) => {
+      const v = suma(cuenta, emp);
       if (!v) return '<td style="text-align:right;color:#cbd5e1">—</td>';
-      return `<td style="text-align:right;${negrita ? "font-weight:bold;" : ""}"><a href="#" style="color:inherit" onclick="resumenVerDetalle('${q(cuenta)}','${q(empleado)}');return false">${money(v)}</a></td>`;
+      return `<td style="text-align:right;white-space:nowrap;${negrita ? "font-weight:bold;" : ""}"><a href="#" style="color:inherit" onclick="resumenDetalle('${clave}','${q(cuenta)}','${q(emp)}');return false">${num(v)}</a></td>`;
     };
 
     let html = `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px"><b>Mes:</b>`
-      + `<select onchange="resumenElegirMes(this.value)" style="width:auto"><option value="">Todos los meses</option>`
-      + meses.map(p => `<option value="${p}" ${p === mesElegido ? "selected" : ""}>${etiquetaMes(p)}</option>`).join("")
-      + `</select><span><b>Total del equipo:</b> ${money(suma("", ""))} <span style="color:#64748b">(${lista.length} movimientos)</span></span></div>`;
-
-    if (!lista.length) {
-      box.innerHTML = html + "<p>No hay gastos de tu equipo para este periodo.</p>";
-      return;
+      + `<select style="width:auto" onchange="resumenFiltro('${clave}','mes',this.value)"><option value="">Todos los meses</option>`
+      + meses.map(p => `<option value="${p}" ${p === st.mes ? "selected" : ""}>${etiquetaMes(p)}</option>`).join("") + `</select>`
+      + (conDepto ? `<b>Departamento:</b><select style="width:auto" onchange="resumenFiltro('${clave}','depto',this.value)"><option value="">Todos</option>`
+        + deptos.map(d => `<option value="${esc(d)}" ${sinAcentos(d) === sinAcentos(st.depto) ? "selected" : ""}>${esc(d)}</option>`).join("") + `</select>` : "")
+      + `<span><b>Total clasificado:</b> USD ${num(suma("", ""))} <span style="color:#64748b">(${lista.length} movimientos)</span></span></div>`;
+    if (pendientes.length) {
+      html += `<p style="color:#A9741F;margin-top:0">⏳ ${pendientes.length} movimiento(s) por USD ${num(pendientes.reduce((t, x) => t + Number(x.amount || 0), 0))} todavía sin cuenta asignada (no se incluyen en la tabla).</p>`;
     }
+    if (!lista.length) return html + "<p>No hay gastos clasificados para este filtro.</p>";
 
-    html += `<div style="overflow-x:auto"><table><thead><tr><th>Código</th><th>Cuenta</th>`
-      + empleados.map(e => `<th style="text-align:right">${esc(e)}</th>`).join("")
+    html += `<div style="overflow-x:auto"><table><thead><tr><th>Código cuenta</th><th>Cuenta de gastos</th>`
+      + empleados.map(e => `<th style="text-align:right;white-space:nowrap">${esc(e)}</th>`).join("")
       + `<th style="text-align:right">Total</th></tr></thead><tbody>`
-      + cuentas.map(c => `<tr${c.clave === SIN ? ' style="color:#b45309"' : ""}><td>${esc(c.codigo)}</td><td>${esc(c.nombre)}</td>`
-        + empleados.map(e => celda(c.clave, e)).join("") + celda(c.clave, "", true) + `</tr>`).join("")
-      + `<tr style="background:#eef2f7"><td></td><td><b>Total</b></td>`
-      + empleados.map(e => celda("", e, true)).join("") + celda("", "", true) + `</tr></tbody></table></div>`;
+      + cuentas.map(c => `<tr><td>${esc(c.codigo)}</td><td style="white-space:nowrap">${esc(c.nombre)}</td>` + empleados.map(e => celda(c.clave, e)).join("") + celda(c.clave, "", true) + `</tr>`).join("")
+      + `<tr style="background:#eef2f7"><td></td><td><b>Total</b></td>` + empleados.map(e => celda("", e, true)).join("") + celda("", "", true) + `</tr></tbody></table></div>`;
 
-    if (detalle) {
-      const filas = lista.filter(x => (!detalle.cuenta || claveCuenta(x) === detalle.cuenta) && (!detalle.empleado || x.employee === detalle.empleado));
-      const nombreCuenta = detalle.cuenta === SIN ? "Sin clasificar" : (detalle.cuenta || "Todas las cuentas");
-      html += `<h3 style="margin-top:24px">Detalle: ${esc(nombreCuenta)} · ${esc(detalle.empleado || "Todo el equipo")}</h3>`
+    if (st.detalle) {
+      const d = st.detalle;
+      const filas = lista.filter(x => (!d.cuenta || x.account === d.cuenta) && (!d.emp || x.employee === d.emp));
+      html += `<h3 style="margin-top:24px">Detalle: ${esc(d.cuenta || "Todas las cuentas")} · ${esc(d.emp || "Todos")}</h3>`
         + `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Comercio</th><th style="text-align:right">Importe</th><th>Concepto</th><th>Cuenta</th><th>Centro de costos</th><th>Estado</th></tr></thead><tbody>`
-        + filas.map(x => `<tr><td>${esc(x.date)}</td><td>${esc(x.employee)}</td><td>${esc(x.supplier || "")}</td><td style="text-align:right">${money(x.amount)}</td><td>${esc(x.concept || "")}</td><td>${esc(x.account || "")}</td>`
-          + `<td>${(x.centerSplits && x.centerSplits.length) ? x.centerSplits.map(p => esc(p.center) + " " + money(p.amount)).join(" + ") : esc(x.center || "")}</td><td>${esc(expenseStatus(x))}</td></tr>`).join("")
+        + filas.map(x => `<tr><td>${esc(x.date)}</td><td>${esc(x.employee)}</td><td>${esc(x.supplier || "")}</td><td style="text-align:right">${num(x.amount)}</td><td>${esc(x.concept || "")}</td><td>${esc(x.account || "")}</td>`
+          + `<td>${(x.centerSplits && x.centerSplits.length) ? x.centerSplits.map(p => esc(p.center) + " " + num(p.amount)).join(" + ") : esc(x.center || "")}</td><td>${esc(expenseStatus(x))}</td></tr>`).join("")
         + `</tbody></table></div>`;
     }
-    box.innerHTML = html;
-  };
+    return html;
+  }
 
-  // Se actualiza en tiempo real junto con Autorizaciones.
+  window.resumenFiltro = function (clave, campo, valor) { estado[clave][campo] = valor || ""; estado[clave].detalle = null; pintar(clave); };
+  window.resumenDetalle = function (clave, cuenta, emp) { estado[clave].detalle = { cuenta, emp }; pintar(clave); };
+
+  function pintar(clave) {
+    if (clave === "equipo") {
+      const box = document.getElementById("resumenEquipoBox");
+      if (box && esJefe()) box.innerHTML = tabla("equipo", s.teamExpenses || [], false);
+    } else {
+      const box = document.getElementById("resumenAdminBox");
+      if (box && esAdmin()) box.innerHTML = tabla("admin", s.expenses || [], true);
+    }
+  }
+  window.renderResumenEquipo = () => pintar("equipo");
+  window.renderResumenAdmin = () => pintar("admin");
+
+  // Se actualiza en tiempo real junto con Autorizaciones (jefe).
   const autorizacionesAnterior = window.renderAutorizaciones;
   if (typeof autorizacionesAnterior === "function") {
     window.renderAutorizaciones = function () { autorizacionesAnterior(); window.renderResumenEquipo(); };
   }
 
   const anterior = window.render || render;
-  window.render = render = function () { anterior(); asegurarPagina(); window.renderResumenEquipo(); };
-  asegurarPagina();
+  window.render = render = function () {
+    anterior(); asegurarPaginas();
+    window.renderResumenEquipo();
+    if (document.getElementById("resumenAdmin")?.classList.contains("active")) window.renderResumenAdmin();
+  };
+  asegurarPaginas();
 })();
