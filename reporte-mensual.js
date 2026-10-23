@@ -358,7 +358,7 @@
 
   async function refrescarEnvios() {
     try { misEnvios = window.misReportesMensuales ? await window.misReportesMensuales() : []; } catch (e) { console.error(e); misEnvios = []; }
-    pintarEmpleado(); bloquearFilas();
+    pintarEmpleado(); pintarInicio(); bloquearFilas();
   }
 
   function pintarEmpleado() {
@@ -394,6 +394,35 @@
   }
 
   window.reporteElegirMes = v => { mesElegido = v; pintarEmpleado(); };
+
+  // Lista de reportes ya enviados en la página de Inicio del empleado.
+  function pintarInicio() {
+    if (!esEmpleado()) return;
+    const sec = document.getElementById("employeeHome");
+    if (!sec) return;
+    let box = document.getElementById("misReportesInicio");
+    if (!box) { box = document.createElement("div"); box.className = "box"; box.id = "misReportesInicio"; box.style.marginTop = "20px"; sec.appendChild(box); }
+    const lista = [...misEnvios].sort((a, b) => String(b.period).localeCompare(String(a.period)));
+    const etiqueta = st => st === "Aceptado" ? '<b style="color:#2F7A68">✅ Aceptado</b>' : st === "Devuelto" ? '<b style="color:#A13A3A">↩️ Devuelto</b>' : '<b style="color:#A9741F">📨 Enviado, en revisión</b>';
+    box.innerHTML = "<h3>Mis reportes enviados</h3>"
+      + (lista.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Mes</th><th style="text-align:right">Movimientos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Descargar</th></tr></thead><tbody>`
+        + lista.map(r => `<tr><td><b>${etiquetaMes(r.period)}</b></td><td style="text-align:right">${r.count}</td><td style="text-align:right">${dinero(r.total)}</td>`
+          + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td>`
+          + `<td>${etiqueta(r.status)}${r.status === "Devuelto" && r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
+          + `<td style="white-space:nowrap"><button class="split-btn" onclick="reporteInicio('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reporteInicio('${q(r.id)}','xlsx')">⬇️ Excel</button></td></tr>`).join("")
+        + `</tbody></table></div>` : "<p>Todavía no has enviado ningún reporte. Cuando termines de clasificar un mes, fírmalo y envíalo desde <b>Reportes</b>.</p>")
+      + `<div id="inicioReporteAviso" style="margin-top:8px;color:#5F6E70"></div>`;
+  }
+  window.reporteInicio = async function (id, tipo) {
+    const r = misEnvios.find(x => x.id === id); if (!r) return;
+    const aviso = t => { const el = document.getElementById("inicioReporteAviso"); if (el) el.textContent = t; };
+    try {
+      aviso("Preparando archivo...");
+      if (tipo === "xlsx") await excel(r);
+      else descargar(await pdf(r, true, aviso), nombreArchivo(r, "pdf"), "application/pdf");
+      aviso("");
+    } catch (e) { console.error(e); aviso(""); alert("No se pudo generar el archivo. " + (e.message || "")); }
+  };
 
   window.reporteDescargar = async function (tipo) {
     const aviso = t => { const el = document.getElementById("reporteAviso"); if (el) el.textContent = t; };
@@ -514,6 +543,7 @@
   // Respaldo: revisa cada segundo que el recuadro exista (por si la página se creó antes que este archivo).
   setInterval(() => {
     try {
+      if (esEmpleado() && document.getElementById("employeeHome") && !document.getElementById("misReportesInicio")) pintarInicio();
       if (esEmpleado() && document.getElementById("employeeReports") && !document.getElementById("reporteMensualBox")) {
         pintarEmpleado();
         if (!cargado && window.firebaseAuth && window.firebaseAuth.currentUser) { cargado = true; refrescarEnvios(); }
