@@ -101,11 +101,25 @@ function accesosDeseados() {
   return m;
 }
 
+// Compara nombres sin importar mayúsculas, acentos, espacios de más ni caracteres invisibles.
+const claveNombre = v => String(v || "").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+// Si el nombre del gasto es el de un empleado configurado, pero escrito con alguna diferencia
+// (doble espacio, acento, etc.), lo deja escrito exactamente como en Configuración.
+function nombreOficial(nombre) {
+  const k = claveNombre(nombre);
+  if (!k) return nombre;
+  const emp = (s.employees || []).find(e => claveNombre(e.name) === k);
+  return emp ? emp.name : nombre;
+}
+
 // Asegura que el gasto tenga id, orden y correo del empleado; devuelve la versión a guardar.
 function prepararGasto(x) {
   if (!x.id) x.id = x.importId || nuevoId();
   x.id = String(x.id).replace(/\//g, "_");
   if (typeof x.orden !== "number") x.orden = siguienteOrden();
+  x.employee = nombreOficial(x.employee);
   x.employeeEmail = correoDeEmpleado(x.employee);
   const jefe = jefeDeEmpleado(x.employee);
   x.bossEmail = jefe.email;
