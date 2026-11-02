@@ -90,7 +90,12 @@ function accesosDeseados() {
   const m = new Map();
   (s.employees || []).forEach(e => {
     const email = correoDeEmpleado(e.name);
-    if (email && !m.has(email)) m.set(email, { email, employee: e.name, dept: e.dept || "", role: "Empleado", isBoss: false, bossName: "", enabled: true });
+    if (!email || m.has(email)) return;
+    // Jefe que autoriza su reporte mensual (vacío si no tiene, o si es él mismo).
+    const jefe = jefeDeEmpleado(e.name);
+    const jefeEmail = jefe.email && jefe.email !== email ? jefe.email : "";
+    m.set(email, { email, employee: e.name, dept: e.dept || "", role: "Empleado", isBoss: false, bossName: "", enabled: true,
+      jefeEmail, jefeNombre: jefeEmail ? jefe.name : "" });
   });
   (s.bosses || []).forEach(b => {
     const email = norm(b.email);
@@ -437,7 +442,9 @@ window.cargarSesionEmpleado = async function (email) {
     role: "Empleado",
     isBoss: !!info.isBoss,
     bossName: info.bossName || "",
-    dept: info.dept || ""
+    dept: info.dept || "",
+    jefeEmail: info.jefeEmail || "",
+    jefeNombre: info.jefeNombre || ""
   };
 };
 
@@ -476,7 +483,14 @@ window.enviarReporteMensual = async function (datos) {
   if (!u) throw new Error("Tu sesión no está activa.");
   const email = norm(u.email);
   const id = email + "_" + datos.period;
-  const registro = JSON.parse(JSON.stringify({ ...datos, employeeEmail: email, status: "Enviado", reviewComment: "" }));
+  // Si el empleado tiene jefe asignado, el reporte va primero con el jefe; si no, directo a Cuentas por Pagar.
+  let sess = {};
+  try { sess = JSON.parse(sessionStorage.getItem("controlGastosSession") || "{}"); } catch (e) {}
+  const jefeEmail = norm(sess.jefeEmail);
+  const registro = JSON.parse(JSON.stringify({ ...datos, employeeEmail: email,
+    status: jefeEmail ? "Por autorizar jefe" : "Enviado", reviewComment: "",
+    bossEmail: jefeEmail, bossName: jefeEmail ? (sess.jefeNombre || "") : "",
+    bossApprovedBy: "", bossApprovedName: "", bossApprovedAt: "" }));
   registro.signedAtServer = serverTimestamp();
   await setDoc(doc(db, "reportes", id), registro);
   return id;
@@ -491,9 +505,28 @@ window.reportesMensualesRecibidos = async function () {
   const r = await getDocs(collection(db, "reportes"));
   return r.docs.map(d => ({ id: d.id, ...d.data() }));
 };
+// Jefe: reportes de su equipo (pendientes y ya revisados por él).
+window.reportesPorAutorizar = async function () {
+  const u = auth.currentUser;
+  if (!u) return [];
+  const r = await getDocs(query(collection(db, "reportes"), where("bossEmail", "==", norm(u.email))));
+  return r.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+// Jefe: autoriza (pasa a Cuentas por Pagar) o devuelve al empleado.
+window.decidirReporteJefe = async function (id, autorizar, comentario) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Tu sesión no está activa.");
+  let nombre = u.email;
+  try { const ss = JSON.parse(sessionStorage.getItem("controlGastosSession") || "{}"); nombre = ss.bossName || ss.employee || u.email; } catch (e) {}
+  const ahora = new Date().toISOString();
+  const cambios = autorizar
+    ? { status: "Enviado", bossApprovedBy: norm(u.email), bossApprovedName: nombre, bossApprovedAt: ahora }
+    : { status: "Devuelto", reviewComment: comentario || "", reviewedBy: norm(u.email), reviewedByName: nombre, reviewedAt: ahora };
+  await updateDoc(doc(db, "reportes", id), cambios);
+};
 window.cambiarEstadoReporte = async function (id, status, comentario) {
   const u = auth.currentUser;
-  await updateDoc(doc(db, "reportes", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedAt: new Date().toISOString() });
+  await updateDoc(doc(db, "reportes", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedByName: "Cuentas por Pagar", reviewedAt: new Date().toISOString() });
 };
 
 // ---------- Restaurar sesión al recargar la página ----------

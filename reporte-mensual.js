@@ -13,11 +13,15 @@
   let misEnvios = [];
   let recibidos = [];
   let cargado = false;
+  let delEquipo = [];
+  let cargadoJefe = false;
+  const CON_JEFE = "Por autorizar jefe";
 
   // ---------- Utilidades ----------
   function session() { try { return JSON.parse(sessionStorage.getItem("controlGastosSession") || "null"); } catch (e) { return null; } }
   const esEmpleado = () => session()?.role === "Empleado" && !!session()?.employee;
   const esAdmin = () => session()?.role === "Administrador";
+  const esJefe = () => session()?.role === "Empleado" && !!session()?.isBoss;
   const q = v => String(v || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
   function cargarScript(url) {
@@ -175,6 +179,12 @@
     f += 2;
     const firma = rep.signedName ? `Signed electronically by ${rep.signedName} (${rep.email}) on ${fechaHora(rep.signedAt)}` : "";
     ws.getCell(f, 1).value = firma || rep.employee; ws.getCell(f, 1).font = { ...negrita, color: { argb: firma ? "FF2F7A68" : "FF1F2B2E" } };
+    if (rep.bossApprovedName) {
+      ws.getCell(f, 4).value = `Approved electronically by ${rep.bossApprovedName}`;
+      ws.getCell(f, 4).font = { ...negrita, color: { argb: "FF2F7A68" } };
+      ws.getCell(f, 5).value = fechaHora(rep.bossApprovedAt);
+      ws.getCell(f, 5).font = { ...fuente, color: { argb: "FF2F7A68" } };
+    }
     ws.getCell(f + 1, 1).value = "Employee Signature"; ws.getCell(f + 1, 4).value = "Supervisor Approval";
     ws.getCell(f + 1, 5).value = "Date";
     f += 4;
@@ -296,7 +306,13 @@
       if (b) [[M + 440, 92, b]].forEach(([x, w, t]) => { pag.drawLine({ start: { x, y: yy }, end: { x: x + w, y: yy }, thickness: .6, color: gris }); pag.drawText(t, { x, y: yy - 11, size: 8, font: neg, color: gris }); });
     };
     firmas(y, "Employee Signature", "");
-    y -= 42; firmas(y, "Supervisor Approval", "");
+    y -= 42;
+    if (rep.bossApprovedName) {
+      pag.drawText(corto("Approved electronically by " + rep.bossApprovedName, neg, 9, 280), { x: M, y: y + 16, size: 9, font: neg, color: verde });
+      pag.drawText(corto(rep.bossApprovedBy, reg, 8, 280), { x: M, y: y + 5, size: 8, font: reg, color: verde });
+      pag.drawText(limpio(fechaHora(rep.bossApprovedAt)), { x: M + 330, y: y + 5, size: 9, font: reg, color: verde });
+    }
+    firmas(y, "Supervisor Approval", "");
     y -= 42; firmas(y, "Finance", "");
     y -= 42; firmas(y, "Director of Administration", "");
     pie(pag);
@@ -332,7 +348,7 @@
 
   // ---------- Empleado ----------
   function estadoEnvio(p) { return misEnvios.find(r => r.period === p); }
-  function bloqueados() { return new Set(misEnvios.filter(r => r.status === "Enviado" || r.status === "Aceptado").map(r => r.period)); }
+  function bloqueados() { return new Set(misEnvios.filter(r => r.status === "Enviado" || r.status === "Aceptado" || r.status === CON_JEFE).map(r => r.period)); }
 
   // Los gastos de un mes ya enviado quedan solo de lectura para el empleado.
   function bloquearFilas() {
@@ -353,7 +369,7 @@
     let aviso = document.getElementById("avisoMesCerrado");
     if (!meses.size) { if (aviso) aviso.remove(); return; }
     if (!aviso) { aviso = document.createElement("div"); aviso.id = "avisoMesCerrado"; aviso.className = "box"; aviso.style.cssText = "border-left:4px solid #B8955A;padding:10px 14px"; const h = sec.querySelector("p"); if (h) h.after(aviso); else sec.prepend(aviso); }
-    aviso.innerHTML = "🔒 <b>" + [...meses].sort().map(etiquetaMes).join(", ") + "</b>: reporte ya firmado y enviado. Esos gastos ya no se pueden modificar; si necesitas corregir algo, pide a Cuentas por Pagar que te devuelva el reporte.";
+    aviso.innerHTML = "🔒 <b>" + [...meses].sort().map(etiquetaMes).join(", ") + "</b>: reporte ya firmado y enviado. Esos gastos ya no se pueden modificar; si necesitas corregir algo, pide que te devuelvan el reporte.";
   }
 
   async function refrescarEnvios() {
@@ -371,15 +387,16 @@
     if (!mesElegido || !meses.includes(mesElegido)) mesElegido = meses[0] || "";
     if (!mesElegido) { box.innerHTML = "<h3>Reporte mensual de tarjeta</h3><p>Todavía no tienes gastos.</p>"; return; }
     const rep = armarReporte(mesElegido), rev = revisar(rep), envio = estadoEnvio(mesElegido);
-    const enviado = envio && (envio.status === "Enviado" || envio.status === "Aceptado");
+    const enviado = envio && (envio.status === "Enviado" || envio.status === "Aceptado" || envio.status === CON_JEFE);
     const avisos = [];
     if (rev.sinClasificar) avisos.push(`<li style="color:#A13A3A">${rev.sinClasificar} gasto(s) sin clasificar (concepto, cuenta o centro de costos).</li>`);
     if (rev.autorizacion) avisos.push(`<li style="color:#A13A3A">${rev.autorizacion} gasto(s) con autorización pendiente o rechazada.</li>`);
     if (rev.sinPdf) avisos.push(`<li style="color:#A9741F">${rev.sinPdf} gasto(s) sin comprobante PDF.</li>`);
     let estado = "";
-    if (envio && envio.status === "Enviado") estado = `<p style="color:#2F7A68"><b>✅ Enviado y firmado</b> el ${fechaHora(envio.signedAt)}. Ya no se pueden modificar los gastos de este mes.</p>`;
+    if (envio && envio.status === CON_JEFE) estado = `<p style="color:#A9741F"><b>⏳ Firmado y enviado a ${esc(envio.bossName || "tu jefe")} para su autorización</b> el ${fechaHora(envio.signedAt)}. Cuando lo autorice, pasará a Cuentas por Pagar. Ya no se pueden modificar los gastos de este mes.</p>`;
+    else if (envio && envio.status === "Enviado") estado = `<p style="color:#2F7A68"><b>✅ Enviado y firmado</b> el ${fechaHora(envio.signedAt)}${envio.bossApprovedName ? `, autorizado por ${esc(envio.bossApprovedName)} el ${fechaHora(envio.bossApprovedAt)}` : ""}. Ya no se pueden modificar los gastos de este mes.</p>`;
     else if (envio && envio.status === "Aceptado") estado = `<p style="color:#2F7A68"><b>✅ Aceptado por Cuentas por Pagar</b> el ${fechaHora(envio.reviewedAt)}.</p>`;
-    else if (envio && envio.status === "Devuelto") estado = `<p style="color:#A13A3A"><b>↩️ Devuelto para corrección:</b> ${esc(envio.reviewComment || "")}<br>Corrige lo necesario y vuelve a firmar y enviar.</p>`;
+    else if (envio && envio.status === "Devuelto") estado = `<p style="color:#A13A3A"><b>↩️ Devuelto para corrección${envio.reviewedByName ? " por " + esc(envio.reviewedByName) : ""}:</b> ${esc(envio.reviewComment || "")}<br>Corrige lo necesario y vuelve a firmar y enviar.</p>`;
     box.innerHTML = `<h3>Reporte mensual de tarjeta (Monthly Credit Card Report)</h3>`
       + `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><b>Mes:</b><select style="width:auto" onchange="reporteElegirMes(this.value)">`
       + meses.map(p => `<option value="${p}" ${p === mesElegido ? "selected" : ""}>${etiquetaMes(p)}</option>`).join("")
@@ -403,7 +420,7 @@
     let box = document.getElementById("misReportesInicio");
     if (!box) { box = document.createElement("div"); box.className = "box"; box.id = "misReportesInicio"; box.style.marginTop = "20px"; sec.appendChild(box); }
     const lista = [...misEnvios].sort((a, b) => String(b.period).localeCompare(String(a.period)));
-    const etiqueta = st => st === "Aceptado" ? '<b style="color:#2F7A68">✅ Aceptado</b>' : st === "Devuelto" ? '<b style="color:#A13A3A">↩️ Devuelto</b>' : '<b style="color:#A9741F">📨 Enviado, en revisión</b>';
+    const etiqueta = st => st === "Aceptado" ? '<b style="color:#2F7A68">✅ Aceptado</b>' : st === "Devuelto" ? '<b style="color:#A13A3A">↩️ Devuelto</b>' : st === CON_JEFE ? '<b style="color:#A9741F">⏳ Con tu jefe para autorizar</b>' : '<b style="color:#A9741F">📨 Enviado, en revisión</b>';
     box.innerHTML = "<h3>Mis reportes enviados</h3>"
       + (lista.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Mes</th><th style="text-align:right">Movimientos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Descargar</th></tr></thead><tbody>`
         + lista.map(r => `<tr><td><b>${etiquetaMes(r.period)}</b></td><td style="text-align:right">${r.count}</td><td style="text-align:right">${dinero(r.total)}</td>`
@@ -456,7 +473,7 @@
       + (rev.sinPdf ? `<p style="color:#A9741F">Atención: ${rev.sinPdf} gasto(s) no tienen comprobante PDF.</p>` : "")
       + `<label style="display:flex;gap:8px;align-items:flex-start;margin:14px 0"><input type="checkbox" id="firmaCertifico" style="width:auto;margin-top:3px"> <span>Certifico que la información es correcta y completa (<i>I certify that the above information is accurate and complete</i>).</span></label>`
       + `<label>Escribe tu nombre completo como firma</label><input id="firmaNombre" style="width:100%;box-sizing:border-box" value="">`
-      + `<p style="font-size:12px;color:#5F6E70">Al enviar, los gastos de este mes quedarán bloqueados. Si hay que corregir algo, Cuentas por Pagar te lo devolverá.</p>`
+      + `<p style="font-size:12px;color:#5F6E70">${session()?.jefeEmail ? `Tu reporte irá primero a <b>${esc(session().jefeNombre || "tu jefe")}</b> para su autorización y después a Cuentas por Pagar.` : "Tu reporte irá a Cuentas por Pagar."} Al enviar, los gastos de este mes quedarán bloqueados. Si hay que corregir algo, te lo devolverán.</p>`
       + `<div id="firmaError" class="login-error"></div>`
       + `<div style="display:flex;gap:10px;margin-top:14px"><button class="primary" id="firmaEnviar" style="width:auto">Firmar y enviar</button><button class="split-btn" onclick="document.getElementById('dlgFirma').close()">Cancelar</button></div>`;
     dlg.querySelector("#firmaEnviar").onclick = async () => {
@@ -471,7 +488,8 @@
         await window.enviarReporteMensual(datos);
         dlg.close();
         await refrescarEnvios();
-        alert("Tu reporte de " + etiquetaMes(datos.period) + " quedó firmado y enviado a Cuentas por Pagar.");
+        const sj = session() || {};
+        alert("Tu reporte de " + etiquetaMes(datos.period) + " quedó firmado y enviado " + (sj.jefeEmail ? "a " + (sj.jefeNombre || "tu jefe") + " para su autorización." : "a Cuentas por Pagar."));
       } catch (e) { console.error(e); mostrar("No se pudo enviar. " + (e.code || e.message || "")); boton.disabled = false; }
     };
     dlg.showModal();
@@ -491,13 +509,14 @@
     if (!box) { box = document.createElement("div"); box.className = "box"; box.id = "reportesRecibidosBox"; sec.insertBefore(box, sec.children[1] || null); }
     const lista = [...recibidos].sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt)));
     const pendientes = lista.filter(r => r.status === "Enviado").length;
-    const etiqueta = st => st === "Aceptado" ? '<b style="color:#2F7A68">Aceptado</b>' : st === "Devuelto" ? '<b style="color:#A13A3A">Devuelto</b>' : '<b style="color:#A9741F">Por revisar</b>';
+    const etiqueta = (st, r) => st === "Aceptado" ? '<b style="color:#2F7A68">Aceptado</b>' : st === "Devuelto" ? '<b style="color:#A13A3A">Devuelto</b>' : st === CON_JEFE ? `<b style="color:#5F6E70">⏳ Esperando autorización de ${esc(r.bossName || "su jefe")}</b>` : '<b style="color:#A9741F">Por revisar</b>';
+    const aprobacion = r => r.bossApprovedName ? `<br><small style="color:#2F7A68">✔ Autorizó ${esc(r.bossApprovedName)} · ${fechaHora(r.bossApprovedAt)}</small>` : "";
     box.innerHTML = `<h3>📨 Reportes mensuales recibidos ${pendientes ? `(${pendientes} por revisar)` : ""}</h3>`
-      + `<p>Reportes firmados por los empleados. El PDF incluye el reporte y todos sus comprobantes.</p>`
+      + `<p>Reportes firmados por los empleados. Los de empleados con jefe asignado llegan aquí para revisión cuando el jefe los autoriza. El PDF incluye el reporte y todos sus comprobantes.</p>`
       + `<button class="split-btn" onclick="reportesActualizar()">🔄 Actualizar</button>`
       + (lista.length ? `<div style="overflow-x:auto"><table style="margin-top:10px"><thead><tr><th>Empleado</th><th>Mes</th><th style="text-align:right">Movimientos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
         + lista.map(r => `<tr><td>${esc(r.employee)}</td><td>${etiquetaMes(r.period)}</td><td style="text-align:right">${r.count}</td><td style="text-align:right">${dinero(r.total)}</td>`
-          + `<td>${esc(r.signedName)}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status)}${r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
+          + `<td>${esc(r.signedName)}<br><small>${fechaHora(r.signedAt)}</small>${aprobacion(r)}</td><td>${etiqueta(r.status, r)}${r.reviewComment ? "<br><small>" + (r.reviewedByName ? esc(r.reviewedByName) + ": " : "") + esc(r.reviewComment) + "</small>" : ""}</td>`
           + `<td style="white-space:nowrap"><button class="split-btn" onclick="reporteAdmin('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reporteAdmin('${q(r.id)}','xlsx')">⬇️ Excel</button>`
           + (r.status === "Enviado" ? ` <button class="split-btn" onclick="reporteRevisar('${q(r.id)}','Aceptado')">✅ Aceptar</button> <button class="split-btn" onclick="reporteRevisar('${q(r.id)}','Devuelto')">↩️ Devolver</button>` : "")
           + `</td></tr>`).join("") + `</tbody></table></div>`
@@ -527,6 +546,68 @@
     catch (e) { console.error(e); alert("No se pudo actualizar. " + (e.code || e.message || "")); }
   };
 
+  // ---------- Jefe: reportes de su equipo por autorizar ----------
+  async function refrescarEquipo() {
+    try { delEquipo = window.reportesPorAutorizar ? await window.reportesPorAutorizar() : []; } catch (e) { console.error(e); delEquipo = []; }
+    pintarJefe();
+  }
+
+  function pintarJefe() {
+    if (!esJefe()) return;
+    const sec = document.getElementById("autorizaciones");
+    if (!sec) return;
+    let box = document.getElementById("reportesJefeBox");
+    if (!box) {
+      box = document.createElement("div"); box.className = "box"; box.id = "reportesJefeBox";
+      const ap = document.getElementById("approvals");
+      if (ap) ap.before(box); else sec.appendChild(box);
+    }
+    const lista = [...delEquipo].sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt)));
+    const pendientes = lista.filter(r => r.status === CON_JEFE);
+    const historial = lista.filter(r => r.status !== CON_JEFE);
+    const botones = r => `<button class="split-btn" onclick="reporteJefeDescargar('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reporteJefeDescargar('${q(r.id)}','xlsx')">⬇️ Excel</button>`;
+    const estado = r => r.status === "Devuelto" ? '<b style="color:#A13A3A">↩️ Devuelto</b>' + (r.reviewComment ? "<br><small>" + (r.reviewedByName ? esc(r.reviewedByName) + ": " : "") + esc(r.reviewComment) + "</small>" : "")
+      : r.status === "Aceptado" ? '<b style="color:#2F7A68">✅ Aceptado por Cuentas por Pagar</b>'
+      : '<b style="color:#2F7A68">✔ Autorizado</b>' + (r.bossApprovedAt ? "<br><small>" + fechaHora(r.bossApprovedAt) + "</small>" : "");
+    box.innerHTML = `<h3>📋 Reportes mensuales por autorizar ${pendientes.length ? `(${pendientes.length})` : ""}</h3>`
+      + `<p>Reportes de tarjeta firmados por tu equipo. Revisa el PDF (incluye los comprobantes) y autorízalo para que pase a Cuentas por Pagar, o devuélvelo al empleado con un comentario.</p>`
+      + `<button class="split-btn" onclick="reportesJefeActualizar()">🔄 Actualizar</button>`
+      + (pendientes.length ? `<div style="overflow-x:auto"><table style="margin-top:10px"><thead><tr><th>Empleado</th><th>Mes</th><th style="text-align:right">Movimientos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Acciones</th></tr></thead><tbody>`
+        + pendientes.map(r => `<tr><td>${esc(r.employee)}</td><td>${etiquetaMes(r.period)}</td><td style="text-align:right">${r.count}</td><td style="text-align:right">${dinero(r.total)}</td>`
+          + `<td>${esc(r.signedName)}<br><small>${fechaHora(r.signedAt)}</small></td>`
+          + `<td style="white-space:nowrap">${botones(r)} <button class="primary" style="display:inline-block;width:auto" onclick="reporteJefeDecidir('${q(r.id)}',true)">✅ Autorizar</button> <button class="split-btn" onclick="reporteJefeDecidir('${q(r.id)}',false)">↩️ Devolver</button></td></tr>`).join("")
+        + `</tbody></table></div>` : "<p style=\"margin-top:10px\"><b>No tienes reportes pendientes de autorizar.</b></p>")
+      + (historial.length ? `<h4 style="margin-top:20px">Historial</h4><div style="overflow-x:auto"><table><thead><tr><th>Empleado</th><th>Mes</th><th style="text-align:right">Total USD</th><th>Estado</th><th>Descargar</th></tr></thead><tbody>`
+        + historial.map(r => `<tr><td>${esc(r.employee)}</td><td>${etiquetaMes(r.period)}</td><td style="text-align:right">${dinero(r.total)}</td><td>${estado(r)}</td><td style="white-space:nowrap">${botones(r)}</td></tr>`).join("")
+        + `</tbody></table></div>` : "")
+      + `<div id="reporteJefeAviso" style="margin-top:8px;color:#5F6E70"></div>`;
+  }
+
+  window.reportesJefeActualizar = refrescarEquipo;
+  window.reporteJefeDescargar = async function (id, tipo) {
+    const r = delEquipo.find(x => x.id === id); if (!r) return;
+    const aviso = t => { const el = document.getElementById("reporteJefeAviso"); if (el) el.textContent = t; };
+    try {
+      aviso("Preparando archivo...");
+      if (tipo === "xlsx") await excel(r);
+      else descargar(await pdf(r, true, aviso), nombreArchivo(r, "pdf"), "application/pdf");
+      aviso("");
+    } catch (e) { console.error(e); aviso(""); alert("No se pudo generar el archivo. " + (e.message || "")); }
+  };
+  window.reporteJefeDecidir = async function (id, autorizar) {
+    const r = delEquipo.find(x => x.id === id); if (!r) return;
+    let comentario = "";
+    if (autorizar) {
+      if (!confirm("¿Autorizar el reporte de " + r.employee + " de " + etiquetaMes(r.period) + " por USD " + dinero(r.total) + "?\n\nPasará a Cuentas por Pagar con tu autorización.")) return;
+    } else {
+      comentario = prompt("Motivo para devolver el reporte a " + r.employee + " (lo verá el empleado):");
+      if (comentario === null) return;
+      if (!comentario.trim()) { alert("Escribe el motivo."); return; }
+    }
+    try { await window.decidirReporteJefe(id, autorizar, comentario.trim()); await refrescarEquipo(); }
+    catch (e) { console.error(e); alert("No se pudo guardar. " + (e.code || e.message || "")); }
+  };
+
   // ---------- Integración ----------
   function vigilar() {
     const body = document.getElementById("expenses");
@@ -548,6 +629,10 @@
         pintarEmpleado();
         if (!cargado && window.firebaseAuth && window.firebaseAuth.currentUser) { cargado = true; refrescarEnvios(); }
       }
+      if (esJefe() && document.getElementById("autorizaciones") && !document.getElementById("reportesJefeBox")) {
+        pintarJefe();
+        if (!cargadoJefe && window.firebaseAuth && window.firebaseAuth.currentUser) { cargadoJefe = true; refrescarEquipo(); }
+      }
       if (esAdmin() && document.getElementById("reportes") && !document.getElementById("reportesRecibidosBox")) {
         pintarAdmin();
         if (!cargado && window.firebaseAuth && window.firebaseAuth.currentUser) { cargado = true; refrescarRecibidos(); }
@@ -562,7 +647,8 @@
       cargado = true;
       if (esEmpleado()) refrescarEnvios(); else refrescarRecibidos();
     }
-    try { if (esEmpleado()) { pintarEmpleado(); bloquearFilas(); } else pintarAdmin(); }
+    if (!cargadoJefe && esJefe() && window.firebaseAuth && window.firebaseAuth.currentUser) { cargadoJefe = true; refrescarEquipo(); }
+    try { if (esEmpleado()) { pintarEmpleado(); bloquearFilas(); } else pintarAdmin(); if (esJefe()) pintarJefe(); }
     catch (e) { console.error("Reporte mensual:", e); }
   };
 })();
