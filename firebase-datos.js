@@ -116,7 +116,7 @@ function nombreOficial(nombre) {
   const k = claveNombre(nombre);
   if (!k) return nombre;
   const emp = (s.employees || []).find(e => claveNombre(e.name) === k);
-  return emp ? emp.name : nombre;
+  return emp ? String(emp.name).replace(/\s+/g, " ").trim() : nombre;
 }
 
 // Asegura que el gasto tenga id, orden y correo del empleado; devuelve la versión a guardar.
