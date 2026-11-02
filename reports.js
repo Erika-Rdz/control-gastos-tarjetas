@@ -4,7 +4,7 @@ function formatoImporte(ws,titulo){if(!ws['!ref'])return;const r=XLSX.utils.deco
 
 function text(v){return String(v??"")}
 function parseDate(v){const m=text(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(m)return {month:m[1].padStart(2,"0"),year:m[3]};const d=new Date(v);if(!isNaN(d))return {month:String(d.getMonth()+1).padStart(2,"0"),year:String(d.getFullYear())};return null}
-function periodKey(x){const d=parseDate(x.date||x.postingDate);return d?d.year+"-"+d.month:""}
+function periodKey(x){const d=parseDate(x.postingDate||x.date);return d?d.year+"-"+d.month:""}
 function selectedExpenses(){const month=document.getElementById("reportMonth")?.value||"",employee=document.getElementById("reportEmployee")?.value||"";return s.expenses.filter(x=>(!month||periodKey(x)===month)&&(!employee||x.employee===employee))}
 function accountInfo(name){return s.accounts.find(a=>a.name===name)||{code:"",name:name||""}}
 function centerInfo(name){return s.centers.find(c=>c.name===name)||{code:"",name:name||"",dept:""}}

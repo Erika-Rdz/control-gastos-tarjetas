@@ -36,8 +36,9 @@
     });
   }
 
+  // Mes según la Posting Date del estado de cuenta (si no la tiene, usa la Tran Date).
   function periodo(x) {
-    const t = String(x.date || "").trim();
+    const t = String(x.postingDate || x.date || "").trim();
     let m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) return m[3] + "-" + m[1].padStart(2, "0");
     m = t.match(/^(\d{4})-(\d{1,2})/);
