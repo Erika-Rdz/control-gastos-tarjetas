@@ -145,6 +145,14 @@
   const linea = id => actual && (actual.items || []).find(i => i.id === id);
   window.reembolsoDividir = function (id) {
     const it = linea(id); if (!it) return;
+    // Antes de dividir, el gasto necesita su importe total.
+    if (!(Number(it.amount) > 0)) {
+      const v = prompt("¿Cuál es el importe total de este gasto (USD)?\nDespués lo repartes entre los centros de costos.");
+      if (v === null) return;
+      const n = Math.round(Number(String(v).replace(/[$,\s]/g, "")) * 100) / 100;
+      if (!(n > 0)) { alert("Escribe un importe válido, por ejemplo 200.00"); return; }
+      it.amount = n;
+    }
     it.centerSplits = [{ center: it.center || "", amount: Number(it.amount || 0) }, { center: "", amount: 0 }];
     it.center = ""; pintarUsuario(); guardarLuego();
   };
@@ -237,12 +245,15 @@
       return `<div style="display:flex;gap:6px;align-items:center"><select ${dis} class="expense-select" onchange="reembolsoCampo('${q(i.id)}','center',this.value)">${opc(centros, i.center, txt)}</select>`
         + (ed ? `<button class="split-btn" title="Dividir entre varios centros" onclick="reembolsoDividir('${q(i.id)}')">✂️ Dividir</button>` : "") + `</div>`;
     }
+    const sinImporte = !(Number(i.amount) > 0);
     const dif = Math.round((Number(i.amount || 0) - sumaDivision(i)) * 100) / 100;
     return i.centerSplits.map((c, k) => `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">`
         + `<select ${dis} class="expense-select" onchange="reembolsoSplitCampo('${q(i.id)}',${k},'center',this.value)">${opc(centros, c.center, txt)}</select>`
         + `<input type="number" step="0.01" min="0" ${dis} value="${c.amount || ""}" onchange="reembolsoSplitCampo('${q(i.id)}',${k},'amount',this.value)" style="width:90px;text-align:right">`
         + (ed ? `<button class="split-btn" title="Quitar centro" onclick="reembolsoSplitQuitar('${q(i.id)}',${k})">✕</button>` : "") + `</div>`).join("")
-      + `<div style="font-size:12px;${Math.abs(dif) > 0.005 ? "color:#A13A3A" : "color:#2F7A68"}">${Math.abs(dif) > 0.005 ? "Falta distribuir: " + dinero(dif) : "✓ La división cuadra"}</div>`
+      + (sinImporte
+        ? `<div style="font-size:12px;color:#A13A3A">Primero escribe el importe total del gasto en <b>Importe USD</b>.</div>`
+        : `<div style="font-size:12px;${Math.abs(dif) > 0.005 ? "color:#A13A3A" : "color:#2F7A68"}">${dif > 0.005 ? "Falta distribuir: " + dinero(dif) : dif < -0.005 ? "La división se pasa por " + dinero(-dif) : "✓ La división cuadra"}</div>`)
       + (ed ? `<div style="display:flex;gap:6px;margin-top:4px"><button class="split-btn" onclick="reembolsoSplitAgregar('${q(i.id)}')">+ Centro</button><button class="split-btn" onclick="reembolsoSinDividir('${q(i.id)}')">Quitar división</button></div>` : "");
   }
 
@@ -279,7 +290,7 @@
         + `<td><input ${dis} value="${esc(i.concept || "")}" placeholder="Concepto" onchange="reembolsoCampo('${q(i.id)}','concept',this.value)" style="min-width:180px"></td>`
         + `<td><select ${dis} class="expense-select" onchange="reembolsoCampo('${q(i.id)}','account',this.value)">${opc(cuentas, i.account, a => (a.code ? a.code + " - " : "") + a.name)}</select></td>`
         + `<td>${celdaCentro(i, ed, dis, centros, opc)}</td>`
-        + `<td><input type="number" step="0.01" min="0" ${dis} value="${i.amount || ""}" onchange="reembolsoCampo('${q(i.id)}','amount',this.value)" style="width:110px;text-align:right"></td>`
+        + `<td><input type="number" step="0.01" min="0" ${dis} value="${i.amount || ""}" onchange="reembolsoCampo('${q(i.id)}','amount',this.value)" style="width:110px;text-align:right${dividido(i) && !(Number(i.amount) > 0) ? ";border:2px solid #A13A3A" : ""}" placeholder="${dividido(i) ? "Importe total" : ""}"></td>`
         + `<td style="white-space:nowrap">${i.receiptPath ? `<button class="split-btn" onclick="reembolsoVerPdf('${q(i.receiptPath)}')">👁️ Ver PDF</button> ` : ""}`
         + (ed ? `<label class="split-btn" style="display:inline-block">${i.receiptPath ? "🔄 Reemplazar" : "📎 Subir PDF"}<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="reembolsoSubir('${q(i.id)}',this)"></label>` : "") + `</td>`
         + `<td>${ed ? `<button class="split-btn" title="Quitar" onclick="reembolsoQuitarLinea('${q(i.id)}')">🗑️</button>` : ""}</td></tr>`).join("")
