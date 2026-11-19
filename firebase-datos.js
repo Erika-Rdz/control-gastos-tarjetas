@@ -497,6 +497,7 @@ window.enviarReporteMensual = async function (datos) {
     bossApprovedBy: "", bossApprovedName: "", bossApprovedAt: "" }));
   registro.signedAtServer = serverTimestamp();
   await setDoc(doc(db, "reportes", id), registro);
+  if (window.avisarCorreo) window.avisarCorreo(registro.status === "Por autorizar jefe" ? "reporte_jefe" : "reporte_admin", registro);
   return id;
 };
 window.misReportesMensuales = async function () {
@@ -527,6 +528,9 @@ window.decidirReporteJefe = async function (id, autorizar, comentario) {
     ? { status: "Enviado", bossApprovedBy: norm(u.email), bossApprovedName: nombre, bossApprovedAt: ahora }
     : { status: "Devuelto", reviewComment: comentario || "", reviewedBy: norm(u.email), reviewedByName: nombre, reviewedAt: ahora };
   await updateDoc(doc(db, "reportes", id), cambios);
+  if (autorizar && window.avisarCorreo) {
+    getDoc(doc(db, "reportes", id)).then(d => { if (d.exists()) window.avisarCorreo("reporte_autorizado", d.data()); }).catch(e => console.warn(e));
+  }
 };
 window.cambiarEstadoReporte = async function (id, status, comentario) {
   const u = auth.currentUser;
@@ -544,6 +548,7 @@ window.guardarReembolso = async function (id, datos) {
   const registro = JSON.parse(JSON.stringify({ ...datos, ownerEmail: norm(u.email) }));
   registro.updatedAt = new Date().toISOString();
   await setDoc(doc(db, "reembolsos", id), registro);
+  if (registro.status === "Enviado" && window.avisarCorreo) window.avisarCorreo("reembolso", registro);
 };
 window.eliminarReembolso = async function (id) { await deleteDoc(doc(db, "reembolsos", id)); };
 window.reembolsosRecibidos = async function () {
