@@ -12,6 +12,10 @@
   function session() { try { return JSON.parse(sessionStorage.getItem("controlGastosSession") || "null"); } catch (e) { return null; } }
   const puede = () => !!session()?.canReimburse;
   const esAdmin = () => session()?.role === "Administrador";
+  const esJefe = () => session()?.role === "Empleado" && !!session()?.isBoss;
+  const CON_JEFE = "Por autorizar jefe";
+  let delEquipo = [];
+  let cargadoJefe = false;
   const q = v => String(v || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const norm = v => String(v || "").trim().toLowerCase();
   const dinero = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -26,7 +30,7 @@
   const dividido = i => Array.isArray(i.centerSplits) && i.centerSplits.length > 0;
   const centrosDe = i => dividido(i) ? i.centerSplits.map(c => c.center).filter(Boolean).join(" + ") : (i.center || "");
   const sumaDivision = i => Math.round((i.centerSplits || []).reduce((t, c) => t + Number(c.amount || 0), 0) * 100) / 100;
-  const etiqueta = st => ({
+  const etiqueta = (st, r) => st === CON_JEFE ? `<b style="color:#A9741F">⏳ Esperando autorización de ${esc((r && r.bossName) || "su jefe")}</b>` : ({
     Borrador: '<b style="color:#5F6E70">Borrador</b>', Enviado: '<b style="color:#A9741F">📨 Enviado, en revisión</b>',
     Aceptado: '<b style="color:#2F7A68">✅ Aceptado</b>', Pagado: '<b style="color:#1D3B45">💵 Pagado</b>', Devuelto: '<b style="color:#A13A3A">↩️ Devuelto</b>'
   })[st] || esc(st || "");
@@ -39,7 +43,8 @@
     let fl = 0, tx = 0; items.forEach(i => centrosDe(i).split(" + ").forEach(c => { if (/\bFL\b/i.test(c)) fl++; if (/\bTX\b/i.test(c)) tx++; }));
     return {
       title: "Expense Reimbursement Request", fileTitle: "Reimbursement " + (r.name || ""),
-      employee: r.ownerName || "", email: r.ownerEmail || "", supervisor: "", department: "",
+      employee: r.ownerName || "", email: r.ownerEmail || "", supervisor: r.bossName || "", department: "",
+      bossApprovedName: r.bossApprovedName || "", bossApprovedBy: r.bossApprovedBy || "", bossApprovedAt: r.bossApprovedAt || "",
       location: fl > tx ? "Florida" : tx > fl ? "Texas" : (fl ? "Florida / Texas" : ""), purpose: (r.name || "Reimbursement") + (r.requestDate ? " (requested " + r.requestDate + ")" : ""),
       period: "", from: fechas[0] || "", to: fechas[fechas.length - 1] || "",
       lines: items.map(i => ({ date: i.date, amount: Number(i.amount || 0), place: i.place || "", description: i.concept || "", accountCode: i.accountCode || codigoCuenta(i.account), centers: centrosDe(i), receiptPath: i.receiptPath || "" })),
@@ -249,7 +254,8 @@
         await window.guardarReembolso(actual.id, datos);
         dlg.close(); actual = null;
         await cargarUsuario();
-        alert("Tu reembolso \"" + (datos.name || "") + "\" quedó firmado y enviado a Cuentas por Pagar.");
+        const sj = session() || {};
+        alert("Tu reembolso \"" + (datos.name || "") + "\" quedó firmado y enviado " + (sj.jefeEmail ? "a " + (sj.jefeNombre || "tu jefe") + " para su autorización. Cuando lo autorice, pasará a Cuentas por Pagar." : "a Cuentas por Pagar."));
       } catch (e) { console.error(e); mostrar("No se pudo enviar. " + (e.code || e.message || "")); boton.disabled = false; }
     };
     dlg.showModal();
@@ -281,7 +287,7 @@
       box.innerHTML = `<button class="primary" style="width:auto;display:inline-block" onclick="reembolsoNuevo()">+ Nuevo reembolso</button>`
         + (filas.length ? `<div style="overflow-x:auto"><table style="margin-top:14px"><thead><tr><th>Reembolso</th><th>Fecha de solicitud</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
           + filas.map(r => `<tr><td><b>${esc(r.name || "Sin nombre")}</b></td><td>${esc(r.requestDate || fechaHora(r.createdAt))}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
-            + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status)}${r.status === "Devuelto" && r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
+            + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status, r)}${r.status === "Devuelto" && r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
             + `<td style="white-space:nowrap">${editable(r) ? `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">✏️ Abrir</button> ` : `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">👁️ Ver</button> `}`
             + `<button class="split-btn" onclick="reembolsoDescargar('${q(r.id)}','pdf')">⬇️ PDF</button>`
             + (editable(r) ? ` <button class="primary" style="width:auto;display:inline-block" onclick="reembolsoFirmarDesdeLista('${q(r.id)}')">✍️ Firmar y enviar</button>` : "")
@@ -295,7 +301,7 @@
     const opc = (arr, sel, txt) => `<option value="">Seleccionar...</option>` + arr.map(a => `<option value="${esc(a.name)}" ${a.name === sel ? "selected" : ""}>${esc(txt(a))}</option>`).join("");
     const dis = ed ? "" : "disabled";
     box.innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="split-btn" onclick="reembolsoCerrar()">← Mis reembolsos</button>`
-      + `<span>${etiqueta(actual.status)}</span>${actual.status === "Devuelto" && actual.reviewComment ? `<span style="color:#A13A3A">Motivo: ${esc(actual.reviewComment)}</span>` : ""}</div>`
+      + `<span>${etiqueta(actual.status, actual)}</span>${actual.status === "Devuelto" && actual.reviewComment ? `<span style="color:#A13A3A">Motivo: ${esc(actual.reviewComment)}</span>` : ""}</div>`
       + `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">`
       + `<label style="flex:1 1 280px"><b>Nombre del reembolso</b><br><input ${dis} value="${esc(actual.name || "")}" placeholder="Ej. Viaje a Monterrey, comida con cliente..." onchange="reembolsoEncabezado('name',this.value)" style="width:100%;box-sizing:border-box"></label>`
       + `<label><b>Fecha de solicitud</b><br><input type="date" ${dis} value="${usAIso(actual.requestDate)}" onchange="reembolsoEncabezado('requestDate',this.value)" style="width:160px"></label>`
@@ -339,11 +345,11 @@
     const filas = [...recibidos].sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt)));
     const pendientes = filas.filter(r => r.status === "Enviado").length;
     box.innerHTML = `<h3>💵 Reembolsos recibidos ${pendientes ? `(${pendientes} por revisar)` : ""}</h3>`
-      + `<p>Gastos pagados por los usuarios autorizados que solicitan reembolso.</p>`
+      + `<p>Gastos pagados por los usuarios que solicitan reembolso. Los de empleados con jefe asignado llegan aquí para revisión cuando el jefe los autoriza.</p>`
       + `<button class="split-btn" onclick="reembolsosActualizar()">🔄 Actualizar</button>`
       + (filas.length ? `<div style="overflow-x:auto"><table style="margin-top:10px"><thead><tr><th>Solicitante</th><th>Reembolso</th><th>Fecha de solicitud</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
         + filas.map(r => `<tr><td>${esc(r.ownerName || r.ownerEmail)}</td><td><b>${esc(r.name || "Sin nombre")}</b></td><td>${esc(r.requestDate || "")}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
-          + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status)}${r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
+          + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status, r)}${r.bossApprovedName ? `<br><small style="color:#2F7A68">✔ Autorizó ${esc(r.bossApprovedName)} · ${fechaHora(r.bossApprovedAt)}</small>` : ""}${r.reviewComment ? "<br><small>" + (r.reviewedByName ? esc(r.reviewedByName) + ": " : "") + esc(r.reviewComment) + "</small>" : ""}</td>`
           + `<td style="white-space:nowrap"><button class="split-btn" onclick="reembolsoAdmin('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reembolsoAdmin('${q(r.id)}','xlsx')">⬇️ Excel</button>`
           + (r.status === "Enviado" ? ` <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Aceptado')">✅ Aceptar</button> <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Devuelto')">↩️ Devolver</button>` : "")
           + (r.status === "Aceptado" ? ` <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Pagado')">💵 Marcar pagado</button>` : "")
@@ -362,6 +368,55 @@
     if (status === "Pagado" && !confirm("¿Marcar este reembolso como pagado?")) return;
     try { await window.estadoReembolso(id, status, comentario.trim()); await cargarAdmin(); }
     catch (e) { console.error(e); alert("No se pudo actualizar. " + (e.code || e.message || "")); }
+  };
+
+  // ---------- Jefe: reembolsos de su equipo por autorizar ----------
+  async function cargarJefe() {
+    try { delEquipo = window.reembolsosPorAutorizar ? await window.reembolsosPorAutorizar() : []; } catch (e) { console.error(e); delEquipo = []; }
+    pintarJefe();
+  }
+  function pintarJefe() {
+    if (!esJefe()) return;
+    const sec = document.getElementById("autorizaciones"); if (!sec) return;
+    let box = document.getElementById("reembolsosJefeBox");
+    if (!box) {
+      box = document.createElement("div"); box.className = "box"; box.id = "reembolsosJefeBox";
+      const ref = document.getElementById("reportesJefeBox") || document.getElementById("approvals");
+      if (ref && ref.id === "reportesJefeBox") ref.after(box); else if (ref) ref.before(box); else sec.appendChild(box);
+    }
+    const filas = [...delEquipo].sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt)));
+    const pend = filas.filter(r => r.status === CON_JEFE), hist = filas.filter(r => r.status !== CON_JEFE);
+    const desc = r => `<button class="split-btn" onclick="reembolsoJefeDescargar('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reembolsoJefeDescargar('${q(r.id)}','xlsx')">⬇️ Excel</button>`;
+    const estado = r => r.status === "Devuelto" ? '<b style="color:#A13A3A">↩️ Devuelto</b>' + (r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : "")
+      : r.status === "Aceptado" || r.status === "Pagado" ? etiqueta(r.status, r)
+      : '<b style="color:#2F7A68">✔ Autorizado</b>' + (r.bossApprovedAt ? "<br><small>" + fechaHora(r.bossApprovedAt) + "</small>" : "");
+    box.innerHTML = `<h3>💵 Reembolsos por autorizar ${pend.length ? `(${pend.length})` : ""}</h3>`
+      + `<p>Reembolsos firmados por tu equipo. Revisa el PDF (incluye los comprobantes) y autorízalo para que pase a Cuentas por Pagar, o devuélvelo con un comentario.</p>`
+      + `<button class="split-btn" onclick="reembolsosJefeActualizar()">🔄 Actualizar</button>`
+      + (pend.length ? `<div style="overflow-x:auto"><table style="margin-top:10px"><thead><tr><th>Empleado</th><th>Reembolso</th><th>Fecha de solicitud</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Acciones</th></tr></thead><tbody>`
+        + pend.map(r => `<tr><td>${esc(r.ownerName || r.ownerEmail)}</td><td><b>${esc(r.name || "Sin nombre")}</b></td><td>${esc(r.requestDate || "")}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
+          + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td>`
+          + `<td style="white-space:nowrap">${desc(r)} <button class="primary" style="display:inline-block;width:auto" onclick="reembolsoJefeDecidir('${q(r.id)}',true)">✅ Autorizar</button> <button class="split-btn" onclick="reembolsoJefeDecidir('${q(r.id)}',false)">↩️ Devolver</button></td></tr>`).join("")
+        + `</tbody></table></div>` : `<p style="margin-top:10px"><b>No tienes reembolsos pendientes de autorizar.</b></p>`)
+      + (hist.length ? `<h4 style="margin-top:20px">Historial</h4><div style="overflow-x:auto"><table><thead><tr><th>Empleado</th><th>Reembolso</th><th style="text-align:right">Total USD</th><th>Estado</th><th>Descargar</th></tr></thead><tbody>`
+        + hist.map(r => `<tr><td>${esc(r.ownerName || r.ownerEmail)}</td><td>${esc(r.name || "Sin nombre")}</td><td style="text-align:right">${dinero(total(r))}</td><td>${estado(r)}</td><td style="white-space:nowrap">${desc(r)}</td></tr>`).join("")
+        + `</tbody></table></div>` : "")
+      + `<div id="reembolsoJefeAviso" style="margin-top:8px;color:#5F6E70"></div>`;
+  }
+  window.reembolsosJefeActualizar = cargarJefe;
+  window.reembolsoJefeDescargar = (id, tipo) => { const r = delEquipo.find(x => x.id === id); if (r) descargar(r, tipo, t => { const el = document.getElementById("reembolsoJefeAviso"); if (el) el.textContent = t; }); };
+  window.reembolsoJefeDecidir = async function (id, autorizar) {
+    const r = delEquipo.find(x => x.id === id); if (!r) return;
+    let comentario = "";
+    if (autorizar) {
+      if (!confirm("¿Autorizar el reembolso \"" + (r.name || "") + "\" de " + (r.ownerName || r.ownerEmail) + " por USD " + dinero(total(r)) + "?\n\nPasará a Cuentas por Pagar con tu autorización.")) return;
+    } else {
+      comentario = prompt("Motivo para devolver el reembolso a " + (r.ownerName || r.ownerEmail) + " (lo verá el empleado):");
+      if (comentario === null) return;
+      if (!comentario.trim()) { alert("Escribe el motivo."); return; }
+    }
+    try { await window.decidirReembolsoJefe(id, autorizar, comentario.trim()); await cargarJefe(); }
+    catch (e) { console.error(e); alert("No se pudo guardar. " + (e.code || e.message || "")); }
   };
 
   // Configuración: quién puede enviar reembolsos
@@ -414,6 +469,10 @@
     try {
       asegurarPagina();
       if (puede() && !cargadoUsuario && window.firebaseAuth?.currentUser) { cargadoUsuario = true; cargarUsuario(); }
+      if (esJefe() && document.getElementById("autorizaciones") && !document.getElementById("reembolsosJefeBox")) {
+        pintarJefe();
+        if (!cargadoJefe && window.firebaseAuth?.currentUser) { cargadoJefe = true; cargarJefe(); }
+      }
       if (esAdmin() && document.getElementById("reportes") && !document.getElementById("reembolsosRecibidosBox")) {
         pintarAdmin();
         if (!cargadoAdmin && window.firebaseAuth?.currentUser) { cargadoAdmin = true; cargarAdmin(); }
@@ -426,6 +485,7 @@
     anterior();
     try {
       asegurarPagina();
+      if (esJefe()) { pintarJefe(); if (!cargadoJefe && window.firebaseAuth?.currentUser) { cargadoJefe = true; cargarJefe(); } }
       if (esAdmin()) { pintarAdmin(); configReembolsos(); if (!cargadoAdmin && window.firebaseAuth?.currentUser) { cargadoAdmin = true; cargarAdmin(); } }
     } catch (e) { console.error("Reembolsos:", e); }
   };

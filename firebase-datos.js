@@ -547,17 +547,49 @@ window.guardarReembolso = async function (id, datos) {
   const u = auth.currentUser; if (!u) throw new Error("Tu sesión no está activa.");
   const registro = JSON.parse(JSON.stringify({ ...datos, ownerEmail: norm(u.email) }));
   registro.updatedAt = new Date().toISOString();
+  // Al enviarlo: si el empleado tiene jefe asignado, va primero con el jefe; si no, directo a Cuentas por Pagar.
+  if (registro.status === "Enviado") {
+    let sess = {};
+    try { sess = JSON.parse(sessionStorage.getItem("controlGastosSession") || "{}"); } catch (e) {}
+    const jefeEmail = norm(sess.jefeEmail);
+    Object.assign(registro, { status: jefeEmail ? "Por autorizar jefe" : "Enviado", bossEmail: jefeEmail, bossName: jefeEmail ? (sess.jefeNombre || "") : "",
+      bossApprovedBy: "", bossApprovedName: "", bossApprovedAt: "" });
+  } else if (registro.status === "Borrador") {
+    registro.bossEmail = "";
+  }
   await setDoc(doc(db, "reembolsos", id), registro);
-  if (registro.status === "Enviado" && window.avisarCorreo) window.avisarCorreo("reembolso", registro);
+  if (window.avisarCorreo && registro.status === "Por autorizar jefe") window.avisarCorreo("reembolso_jefe", registro);
+  else if (window.avisarCorreo && registro.status === "Enviado") window.avisarCorreo("reembolso", registro);
 };
 window.eliminarReembolso = async function (id) { await deleteDoc(doc(db, "reembolsos", id)); };
 window.reembolsosRecibidos = async function () {
   const r = await getDocs(collection(db, "reembolsos"));
   return r.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.status !== "Borrador");
 };
+// Jefe: reembolsos de su equipo (pendientes y ya revisados por él).
+window.reembolsosPorAutorizar = async function () {
+  const u = auth.currentUser; if (!u) return [];
+  const r = await getDocs(query(collection(db, "reembolsos"), where("bossEmail", "==", norm(u.email))));
+  return r.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+// Jefe: autoriza (pasa a Cuentas por Pagar) o devuelve al empleado.
+window.decidirReembolsoJefe = async function (id, autorizar, comentario) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Tu sesión no está activa.");
+  let nombre = u.email;
+  try { const ss = JSON.parse(sessionStorage.getItem("controlGastosSession") || "{}"); nombre = ss.bossName || ss.employee || u.email; } catch (e) {}
+  const ahora = new Date().toISOString();
+  const cambios = autorizar
+    ? { status: "Enviado", bossApprovedBy: norm(u.email), bossApprovedName: nombre, bossApprovedAt: ahora }
+    : { status: "Devuelto", reviewComment: comentario || "", reviewedBy: norm(u.email), reviewedByName: nombre, reviewedAt: ahora };
+  await updateDoc(doc(db, "reembolsos", id), cambios);
+  if (autorizar && window.avisarCorreo) {
+    getDoc(doc(db, "reembolsos", id)).then(d => { if (d.exists()) window.avisarCorreo("reembolso_autorizado", d.data()); }).catch(e => console.warn(e));
+  }
+};
 window.estadoReembolso = async function (id, status, comentario) {
   const u = auth.currentUser;
-  await updateDoc(doc(db, "reembolsos", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedAt: new Date().toISOString() });
+  await updateDoc(doc(db, "reembolsos", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedByName: "Cuentas por Pagar", reviewedAt: new Date().toISOString() });
 };
 
 // ---------- Restaurar sesión al recargar la página ----------

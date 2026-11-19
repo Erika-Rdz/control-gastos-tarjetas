@@ -2,7 +2,10 @@
 //  • Empleado con jefe envía su reporte mensual  → correo al jefe para que lo autorice.
 //  • Empleado sin jefe envía su reporte          → correo a Cuentas por Pagar.
 //  • El jefe autoriza un reporte                  → correo a Cuentas por Pagar.
-//  • Alguien envía un reembolso                   → correo a Cuentas por Pagar.
+//  • Empleado con jefe envía su reembolso         → correo al jefe para que lo autorice.
+//  • Empleado sin jefe envía su reembolso         → correo a Cuentas por Pagar.
+//  • El jefe autoriza un reembolso                → correo a Cuentas por Pagar.
+//  Lo que va al jefe también llega en copia a Cuentas por Pagar.
 // Llena los tres datos de abajo con los de tu cuenta de EmailJS. Mientras estén vacíos,
 // el sistema funciona igual, solo que no manda correos.
 window.AVISOS_CORREO = {
@@ -50,6 +53,16 @@ window.AVISOS_CORREO = {
       asunto: `Reporte de ${d.employee} autorizado por ${d.bossApprovedName || "su jefe"}`,
       mensaje: `${d.bossApprovedName || "El jefe"} autorizó el reporte de tarjeta de ${d.employee} de ${mes(d.period)} por ${total}.\n\nYa está en tu bandeja de "Reportes" para revisión.`
     };
+    if (evento === "reembolso_jefe") return {
+      to_email: d.bossEmail, to_name: d.bossName || "",
+      asunto: `Reembolso "${d.name || "Sin nombre"}" de ${d.ownerName || d.ownerEmail} por autorizar`,
+      mensaje: `${d.ownerName || d.ownerEmail} firmó y te envió el reembolso "${d.name || "Sin nombre"}" (solicitado el ${d.requestDate || ""}) por ${total}, con ${(d.items || []).length} gasto(s), para tu autorización.\n\nEntra al sistema, abre "Autorizaciones" y da clic en Autorizar o Devolver.`
+    };
+    if (evento === "reembolso_autorizado") return {
+      to_email: ADMIN, to_name: "Cuentas por Pagar",
+      asunto: `Reembolso "${d.name || "Sin nombre"}" de ${d.ownerName || d.ownerEmail} autorizado por ${d.bossApprovedName || "su jefe"}`,
+      mensaje: `${d.bossApprovedName || "El jefe"} autorizó el reembolso "${d.name || "Sin nombre"}" de ${d.ownerName || d.ownerEmail} por ${total}.\n\nYa está en tu bandeja de "Reportes" → "Reembolsos recibidos" para revisión.`
+    };
     if (evento === "reembolso") return {
       to_email: ADMIN, to_name: "Cuentas por Pagar",
       asunto: `Reembolso "${d.name || "Sin nombre"}" de ${d.ownerName || d.ownerEmail}`,
@@ -67,6 +80,15 @@ window.AVISOS_CORREO = {
       if (!p || !p.to_email) return;
       await cargarSDK();
       await window.emailjs.send(cfg.serviceId, cfg.templateId, { ...p, enlace: SITIO }, { publicKey: cfg.publicKey });
+      // Copia a Cuentas por Pagar de lo que se envía al jefe para autorizar.
+      if ((evento === "reporte_jefe" || evento === "reembolso_jefe") && String(p.to_email).toLowerCase() !== ADMIN) {
+        await window.emailjs.send(cfg.serviceId, cfg.templateId, {
+          to_email: ADMIN, to_name: "Cuentas por Pagar",
+          asunto: "Copia: " + p.asunto,
+          mensaje: "(Copia para Cuentas por Pagar. Se envió a " + (p.to_name || p.to_email) + " para su autorización.)\n\n" + p.mensaje,
+          enlace: SITIO
+        }, { publicKey: cfg.publicKey });
+      }
     } catch (e) {
       console.warn("No se pudo enviar el aviso por correo:", e);
     }

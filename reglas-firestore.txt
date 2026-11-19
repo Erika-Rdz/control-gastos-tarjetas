@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function isAdmin() {
+      return signedIn() && myEmail() == 'accountspayable@peninsulasteel.com';
+    }
+    function myAccess() {
+      return get(/databases/$(database)/documents/accesos/$(myEmail())).data;
+    }
+    function accessEnabled() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/accesos/$(myEmail()))
+        && myAccess().enabled == true;
+    }
+    function ownsExpense(data) {
+      return accessEnabled() && data.employeeEmail == myEmail();
+    }
+    function bossOf(data) {
+      return accessEnabled() && myAccess().get('isBoss', false) == true
+        && data.bossEmail == myEmail();
+    }
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+    // El reporte va con el jefe asignado por la administradora (si tiene) o directo a Cuentas por Pagar.
+    function rutaReporte() {
+      let jefe = myAccess().get('jefeEmail', '');
+      return request.resource.data.get('bossEmail', '') == jefe
+        && ((jefe == '' && request.resource.data.status == 'Enviado')
+            || (jefe != '' && request.resource.data.status == 'Por autorizar jefe'));
+    }
+
+    // Igual para reembolsos; el borrador se puede guardar sin jefe.
+    function rutaReembolso() {
+      let jefe = myAccess().get('jefeEmail', '');
+      let st = request.resource.data.status;
+      return st == 'Borrador'
+        || (request.resource.data.get('bossEmail', '') == jefe
+            && ((jefe == '' && st == 'Enviado') || (jefe != '' && st == 'Por autorizar jefe')));
+    }
+
+    match /usuarios/{uid} {
+      allow read, write: if isAdmin();
+    }
+
+    match /respaldos/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /catalogos/{id} {
+      allow read: if isAdmin() || accessEnabled();
+      allow write: if isAdmin();
+    }
+
+    match /accesos/{email} {
+      allow read: if isAdmin() || (signedIn() && email == myEmail());
+      allow write: if isAdmin();
+    }
+
+    match /gastos/{id} {
+      allow read: if isAdmin() || ownsExpense(resource.data) || bossOf(resource.data);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        // Empleado: solo sus campos, y solo puede dejar la autorización vacía o "Solicitada"
+        || (ownsExpense(resource.data)
+            && changed().hasOnly(['concept','account','center','centerSplits','status','receipt','receiptPath','receiptName',
+                                  'alcohol','authStatus','authRequestedAt','authRequestedBy'])
+            && (!changed().hasAny(['authStatus'])
+                || request.resource.data.get('authStatus', '') in ['', 'Solicitada']))
+        // Jefe: solo autoriza o rechaza lo que le solicitaron, nunca sus propios gastos
+        || (bossOf(resource.data)
+            && resource.data.get('employeeEmail', '') != myEmail()
+            && resource.data.get('authStatus', '') == 'Solicitada'
+            && changed().hasOnly(['authStatus','authBy','authByName','authAt','authComment'])
+            && request.resource.data.authStatus in ['Autorizada', 'Rechazada']);
+    }
+
+    // Reportes mensuales firmados por los empleados
+    match /reportes/{id} {
+      allow read: if isAdmin()
+        || (accessEnabled() && resource.data.employeeEmail == myEmail())
+        || (accessEnabled() && resource.data.bossEmail == myEmail());
+      allow create: if accessEnabled()
+        && request.resource.data.employeeEmail == myEmail()
+        && id == myEmail() + '_' + request.resource.data.period
+        && rutaReporte();
+      allow update: if isAdmin()
+        // Empleado: vuelve a enviar un reporte que le devolvieron
+        || (accessEnabled()
+            && resource.data.employeeEmail == myEmail()
+            && resource.data.status == 'Devuelto'
+            && request.resource.data.employeeEmail == myEmail()
+            && rutaReporte())
+        // Jefe: autoriza (pasa a Cuentas por Pagar) o devuelve el reporte de su equipo
+        || (accessEnabled()
+            && myAccess().get('isBoss', false) == true
+            && resource.data.bossEmail == myEmail()
+            && resource.data.employeeEmail != myEmail()
+            && resource.data.status == 'Por autorizar jefe'
+            && changed().hasOnly(['status','bossApprovedBy','bossApprovedName','bossApprovedAt',
+                                  'reviewComment','reviewedBy','reviewedByName','reviewedAt'])
+            && request.resource.data.status in ['Enviado', 'Devuelto']
+            && (request.resource.data.status == 'Devuelto' || request.resource.data.bossApprovedBy == myEmail()));
+      allow delete: if isAdmin();
+    }
+
+    // Reembolsos de usuarios autorizados
+    match /reembolsos/{id} {
+      allow read: if isAdmin()
+        || (accessEnabled() && resource.data.ownerEmail == myEmail())
+        || (accessEnabled() && resource.data.bossEmail == myEmail());
+      allow create: if accessEnabled()
+        && myAccess().get('canReimburse', false) == true
+        && request.resource.data.ownerEmail == myEmail()
+        && rutaReembolso();
+      allow update: if isAdmin()
+        // Dueño: edita su borrador o lo que le devolvieron, y lo envía
+        || (accessEnabled()
+            && myAccess().get('canReimburse', false) == true
+            && resource.data.ownerEmail == myEmail()
+            && resource.data.status in ['Borrador', 'Devuelto']
+            && request.resource.data.ownerEmail == myEmail()
+            && rutaReembolso())
+        // Jefe: autoriza (pasa a Cuentas por Pagar) o devuelve el reembolso de su equipo
+        || (accessEnabled()
+            && myAccess().get('isBoss', false) == true
+            && resource.data.bossEmail == myEmail()
+            && resource.data.ownerEmail != myEmail()
+            && resource.data.status == 'Por autorizar jefe'
+            && changed().hasOnly(['status','bossApprovedBy','bossApprovedName','bossApprovedAt',
+                                  'reviewComment','reviewedBy','reviewedByName','reviewedAt'])
+            && request.resource.data.status in ['Enviado', 'Devuelto']
+            && (request.resource.data.status == 'Devuelto' || request.resource.data.bossApprovedBy == myEmail()));
+      allow delete: if isAdmin()
+        || (accessEnabled() && resource.data.ownerEmail == myEmail() && resource.data.status == 'Borrador');
+    }
+  }
+}
