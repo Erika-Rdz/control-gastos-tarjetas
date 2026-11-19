@@ -22,6 +22,10 @@
   const usAIso = v => { const m = String(v || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? m[3] + "-" + m[1] + "-" + m[2] : ""; };
   const ordenFecha = v => usAIso(v) || "9999";
   const total = r => Math.round((r.items || []).reduce((t, i) => t + Number(i.amount || 0), 0) * 100) / 100;
+  const hoyUs = () => { const d = new Date(); return String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0") + "/" + d.getFullYear(); };
+  const dividido = i => Array.isArray(i.centerSplits) && i.centerSplits.length > 0;
+  const centrosDe = i => dividido(i) ? i.centerSplits.map(c => c.center).filter(Boolean).join(" + ") : (i.center || "");
+  const sumaDivision = i => Math.round((i.centerSplits || []).reduce((t, c) => t + Number(c.amount || 0), 0) * 100) / 100;
   const etiqueta = st => ({
     Borrador: '<b style="color:#5F6E70">Borrador</b>', Enviado: '<b style="color:#A9741F">📨 Enviado, en revisión</b>',
     Aceptado: '<b style="color:#2F7A68">✅ Aceptado</b>', Pagado: '<b style="color:#1D3B45">💵 Pagado</b>', Devuelto: '<b style="color:#A13A3A">↩️ Devuelto</b>'
@@ -32,13 +36,13 @@
   function comoReporte(r) {
     const items = [...(r.items || [])].sort((a, b) => ordenFecha(a.date).localeCompare(ordenFecha(b.date)));
     const fechas = items.map(i => i.date).filter(Boolean);
-    let fl = 0, tx = 0; items.forEach(i => { if (/\bFL\b/i.test(i.center || "")) fl++; if (/\bTX\b/i.test(i.center || "")) tx++; });
+    let fl = 0, tx = 0; items.forEach(i => centrosDe(i).split(" + ").forEach(c => { if (/\bFL\b/i.test(c)) fl++; if (/\bTX\b/i.test(c)) tx++; }));
     return {
-      title: "Expense Reimbursement Request", fileTitle: "Reimbursement",
+      title: "Expense Reimbursement Request", fileTitle: "Reimbursement " + (r.name || ""),
       employee: r.ownerName || "", email: r.ownerEmail || "", supervisor: "", department: "",
-      location: fl > tx ? "Florida" : tx > fl ? "Texas" : (fl ? "Florida / Texas" : ""), purpose: "Reimbursement",
+      location: fl > tx ? "Florida" : tx > fl ? "Texas" : (fl ? "Florida / Texas" : ""), purpose: (r.name || "Reimbursement") + (r.requestDate ? " (requested " + r.requestDate + ")" : ""),
       period: "", from: fechas[0] || "", to: fechas[fechas.length - 1] || "",
-      lines: items.map(i => ({ date: i.date, amount: Number(i.amount || 0), place: i.place || "", description: i.concept || "", accountCode: i.accountCode || codigoCuenta(i.account), receiptPath: i.receiptPath || "" })),
+      lines: items.map(i => ({ date: i.date, amount: Number(i.amount || 0), place: i.place || "", description: i.concept || "", accountCode: i.accountCode || codigoCuenta(i.account), centers: centrosDe(i), receiptPath: i.receiptPath || "" })),
       count: items.length, total: total(r), signedName: r.signedName || "", signedAt: r.signedAt || ""
     };
   }
@@ -110,7 +114,7 @@
 
   window.reembolsoNuevo = function () {
     const sess = session() || {};
-    actual = { id: nuevoId(), ownerName: sess.name || "", status: "Borrador", createdAt: new Date().toISOString(), items: [{ id: nuevoId(), date: "", place: "", concept: "", account: "", center: "", amount: 0 }] };
+    actual = { id: nuevoId(), ownerName: sess.name || "", name: "", requestDate: hoyUs(), status: "Borrador", createdAt: new Date().toISOString(), items: [{ id: nuevoId(), date: "", place: "", concept: "", account: "", center: "", amount: 0 }] };
     pintarUsuario();
   };
   window.reembolsoAbrir = id => { actual = lista.find(r => r.id === id) || null; pintarUsuario(); };
@@ -126,9 +130,41 @@
     else if (campo === "amount") it.amount = Math.round(Number(valor || 0) * 100) / 100;
     else it[campo] = valor;
     if (campo === "account") it.accountCode = codigoCuenta(valor);
+    if (campo === "amount" && dividido(it)) pintarUsuario();
     const t = document.getElementById("reembolsoTotal"); if (t) t.textContent = dinero(total(actual));
+    const t2 = document.getElementById("reembolsoTotalArriba"); if (t2) t2.textContent = dinero(total(actual));
     guardarLuego();
   };
+  window.reembolsoEncabezado = function (campo, valor) {
+    if (!actual) return;
+    if (campo === "requestDate") actual.requestDate = isoAUs(valor);
+    else actual[campo] = String(valor || "").trim();
+    guardarLuego();
+  };
+  // ---------- Dividir un gasto entre varios centros de costos ----------
+  const linea = id => actual && (actual.items || []).find(i => i.id === id);
+  window.reembolsoDividir = function (id) {
+    const it = linea(id); if (!it) return;
+    it.centerSplits = [{ center: it.center || "", amount: Number(it.amount || 0) }, { center: "", amount: 0 }];
+    it.center = ""; pintarUsuario(); guardarLuego();
+  };
+  window.reembolsoSinDividir = function (id) {
+    const it = linea(id); if (!it) return;
+    it.center = (it.centerSplits || [])[0]?.center || ""; delete it.centerSplits; pintarUsuario(); guardarLuego();
+  };
+  window.reembolsoSplitAgregar = function (id) { const it = linea(id); if (!it) return; it.centerSplits.push({ center: "", amount: 0 }); pintarUsuario(); guardarLuego(); };
+  window.reembolsoSplitQuitar = function (id, k) {
+    const it = linea(id); if (!it) return;
+    it.centerSplits.splice(k, 1);
+    if (it.centerSplits.length < 2) { window.reembolsoSinDividir(id); return; }
+    pintarUsuario(); guardarLuego();
+  };
+  window.reembolsoSplitCampo = function (id, k, campo, valor) {
+    const it = linea(id); if (!it || !it.centerSplits[k]) return;
+    it.centerSplits[k][campo] = campo === "amount" ? Math.round(Number(valor || 0) * 100) / 100 : valor;
+    pintarUsuario(); guardarLuego();
+  };
+
   window.reembolsoEliminar = async function (id) {
     if (!confirm("¿Eliminar este borrador de reembolso?")) return;
     try { await window.eliminarReembolso(id); lista = lista.filter(r => r.id !== id); if (actual && actual.id === id) actual = null; pintarUsuario(); }
@@ -141,12 +177,19 @@
 
   function faltantes(r) {
     const items = r.items || [];
-    if (!items.length) return ["Agrega al menos un gasto."];
     const f = [];
+    if (!String(r.name || "").trim()) f.push("Escribe el nombre del reembolso.");
+    if (!r.requestDate) f.push("Indica la fecha de solicitud.");
+    if (!items.length) return f.concat(["Agrega al menos un gasto."]);
     items.forEach((i, k) => {
       const falta = [];
       if (!i.date) falta.push("fecha"); if (!i.place) falta.push("comercio"); if (!i.concept) falta.push("concepto");
-      if (!i.account) falta.push("cuenta"); if (!i.center) falta.push("centro de costos"); if (!(Number(i.amount) > 0)) falta.push("importe");
+      if (!i.account) falta.push("cuenta"); if (!(Number(i.amount) > 0)) falta.push("importe");
+      if (dividido(i)) {
+        if (i.centerSplits.some(c => !c.center)) falta.push("centro de costos en la división");
+        if (i.centerSplits.some(c => !(Number(c.amount) > 0))) falta.push("importe en la división");
+        if (Math.abs(sumaDivision(i) - Number(i.amount || 0)) > 0.005) falta.push("que la división sume exactamente " + dinero(i.amount));
+      } else if (!i.center) falta.push("centro de costos");
       if (falta.length) f.push("Gasto " + (k + 1) + ": falta " + falta.join(", ") + ".");
     });
     return f;
@@ -164,7 +207,7 @@
       document.body.appendChild(dlg);
     }
     dlg.innerHTML = `<h3 style="margin-top:0">Firmar y enviar reembolso</h3>`
-      + `<p>${actual.items.length} gasto(s) · <b>USD ${dinero(total(actual))}</b></p>`
+      + `<p><b>${esc(actual.name)}</b><br>Fecha de solicitud: ${esc(actual.requestDate)}<br>${actual.items.length} gasto(s) · <b>USD ${dinero(total(actual))}</b></p>`
       + (sinPdf ? `<p style="color:#A9741F">Atención: ${sinPdf} gasto(s) no tienen comprobante PDF.</p>` : "")
       + `<label style="display:flex;gap:8px;align-items:flex-start;margin:14px 0"><input type="checkbox" id="rbCertifico" style="width:auto;margin-top:3px"> <span>Certifico que estos gastos fueron pagados por mí para fines de la empresa y que la información es correcta.</span></label>`
       + `<label>Escribe tu nombre completo como firma</label><input id="rbNombre" style="width:100%;box-sizing:border-box">`
@@ -182,11 +225,26 @@
         await window.guardarReembolso(actual.id, datos);
         dlg.close(); actual = null;
         await cargarUsuario();
-        alert("Tu reembolso quedó firmado y enviado a Cuentas por Pagar.");
+        alert("Tu reembolso \"" + (datos.name || "") + "\" quedó firmado y enviado a Cuentas por Pagar.");
       } catch (e) { console.error(e); mostrar("No se pudo enviar. " + (e.code || e.message || "")); boton.disabled = false; }
     };
     dlg.showModal();
   };
+
+  function celdaCentro(i, ed, dis, centros, opc) {
+    const txt = c => (c.code ? c.code + " - " : "") + c.name;
+    if (!dividido(i)) {
+      return `<div style="display:flex;gap:6px;align-items:center"><select ${dis} class="expense-select" onchange="reembolsoCampo('${q(i.id)}','center',this.value)">${opc(centros, i.center, txt)}</select>`
+        + (ed ? `<button class="split-btn" title="Dividir entre varios centros" onclick="reembolsoDividir('${q(i.id)}')">✂️ Dividir</button>` : "") + `</div>`;
+    }
+    const dif = Math.round((Number(i.amount || 0) - sumaDivision(i)) * 100) / 100;
+    return i.centerSplits.map((c, k) => `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">`
+        + `<select ${dis} class="expense-select" onchange="reembolsoSplitCampo('${q(i.id)}',${k},'center',this.value)">${opc(centros, c.center, txt)}</select>`
+        + `<input type="number" step="0.01" min="0" ${dis} value="${c.amount || ""}" onchange="reembolsoSplitCampo('${q(i.id)}',${k},'amount',this.value)" style="width:90px;text-align:right">`
+        + (ed ? `<button class="split-btn" title="Quitar centro" onclick="reembolsoSplitQuitar('${q(i.id)}',${k})">✕</button>` : "") + `</div>`).join("")
+      + `<div style="font-size:12px;${Math.abs(dif) > 0.005 ? "color:#A13A3A" : "color:#2F7A68"}">${Math.abs(dif) > 0.005 ? "Falta distribuir: " + dinero(dif) : "✓ La división cuadra"}</div>`
+      + (ed ? `<div style="display:flex;gap:6px;margin-top:4px"><button class="split-btn" onclick="reembolsoSplitAgregar('${q(i.id)}')">+ Centro</button><button class="split-btn" onclick="reembolsoSinDividir('${q(i.id)}')">Quitar división</button></div>` : "");
+  }
 
   function pintarUsuario() {
     const box = document.getElementById("reembolsosBox");
@@ -194,8 +252,8 @@
     if (!actual) {
       const filas = [...lista].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
       box.innerHTML = `<button class="primary" style="width:auto;display:inline-block" onclick="reembolsoNuevo()">+ Nuevo reembolso</button>`
-        + (filas.length ? `<div style="overflow-x:auto"><table style="margin-top:14px"><thead><tr><th>Creado</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
-          + filas.map(r => `<tr><td>${fechaHora(r.createdAt)}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
+        + (filas.length ? `<div style="overflow-x:auto"><table style="margin-top:14px"><thead><tr><th>Reembolso</th><th>Fecha de solicitud</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
+          + filas.map(r => `<tr><td><b>${esc(r.name || "Sin nombre")}</b></td><td>${esc(r.requestDate || fechaHora(r.createdAt))}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
             + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status)}${r.status === "Devuelto" && r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
             + `<td style="white-space:nowrap">${editable(r) ? `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">✏️ Abrir</button> ` : `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">👁️ Ver</button> `}`
             + `<button class="split-btn" onclick="reembolsoDescargar('${q(r.id)}','pdf')">⬇️ PDF</button>`
@@ -210,13 +268,17 @@
     const dis = ed ? "" : "disabled";
     box.innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="split-btn" onclick="reembolsoCerrar()">← Mis reembolsos</button>`
       + `<span>${etiqueta(actual.status)}</span>${actual.status === "Devuelto" && actual.reviewComment ? `<span style="color:#A13A3A">Motivo: ${esc(actual.reviewComment)}</span>` : ""}</div>`
+      + `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">`
+      + `<label style="flex:1 1 280px"><b>Nombre del reembolso</b><br><input ${dis} value="${esc(actual.name || "")}" placeholder="Ej. Viaje a Monterrey, comida con cliente..." onchange="reembolsoEncabezado('name',this.value)" style="width:100%;box-sizing:border-box"></label>`
+      + `<label><b>Fecha de solicitud</b><br><input type="date" ${dis} value="${usAIso(actual.requestDate)}" onchange="reembolsoEncabezado('requestDate',this.value)" style="width:160px"></label>`
+      + `<div><b>Monto total</b><br><span style="font-size:20px">USD <span id="reembolsoTotalArriba">${dinero(total(actual))}</span></span></div></div>`
       + `<div style="overflow-x:auto"><table style="margin-top:14px"><thead><tr><th>Fecha</th><th>Comercio</th><th>Concepto</th><th>Cuenta de gasto</th><th>Centro de costos</th><th style="text-align:right">Importe USD</th><th>Comprobante</th><th></th></tr></thead><tbody>`
       + actual.items.map(i => `<tr>`
         + `<td><input type="date" ${dis} value="${usAIso(i.date)}" onchange="reembolsoCampo('${q(i.id)}','date',this.value)" style="width:140px"></td>`
         + `<td><input ${dis} value="${esc(i.place || "")}" placeholder="Comercio" onchange="reembolsoCampo('${q(i.id)}','place',this.value)" style="min-width:150px"></td>`
         + `<td><input ${dis} value="${esc(i.concept || "")}" placeholder="Concepto" onchange="reembolsoCampo('${q(i.id)}','concept',this.value)" style="min-width:180px"></td>`
         + `<td><select ${dis} class="expense-select" onchange="reembolsoCampo('${q(i.id)}','account',this.value)">${opc(cuentas, i.account, a => (a.code ? a.code + " - " : "") + a.name)}</select></td>`
-        + `<td><select ${dis} class="expense-select" onchange="reembolsoCampo('${q(i.id)}','center',this.value)">${opc(centros, i.center, c => (c.code ? c.code + " - " : "") + c.name)}</select></td>`
+        + `<td>${celdaCentro(i, ed, dis, centros, opc)}</td>`
         + `<td><input type="number" step="0.01" min="0" ${dis} value="${i.amount || ""}" onchange="reembolsoCampo('${q(i.id)}','amount',this.value)" style="width:110px;text-align:right"></td>`
         + `<td style="white-space:nowrap">${i.receiptPath ? `<button class="split-btn" onclick="reembolsoVerPdf('${q(i.receiptPath)}')">👁️ Ver PDF</button> ` : ""}`
         + (ed ? `<label class="split-btn" style="display:inline-block">${i.receiptPath ? "🔄 Reemplazar" : "📎 Subir PDF"}<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="reembolsoSubir('${q(i.id)}',this)"></label>` : "") + `</td>`
@@ -250,8 +312,8 @@
     box.innerHTML = `<h3>💵 Reembolsos recibidos ${pendientes ? `(${pendientes} por revisar)` : ""}</h3>`
       + `<p>Gastos pagados por los usuarios autorizados que solicitan reembolso.</p>`
       + `<button class="split-btn" onclick="reembolsosActualizar()">🔄 Actualizar</button>`
-      + (filas.length ? `<div style="overflow-x:auto"><table style="margin-top:10px"><thead><tr><th>Solicitante</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
-        + filas.map(r => `<tr><td>${esc(r.ownerName || r.ownerEmail)}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
+      + (filas.length ? `<div style="overflow-x:auto"><table style="margin-top:10px"><thead><tr><th>Solicitante</th><th>Reembolso</th><th>Fecha de solicitud</th><th style="text-align:right">Gastos</th><th style="text-align:right">Total USD</th><th>Firmado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`
+        + filas.map(r => `<tr><td>${esc(r.ownerName || r.ownerEmail)}</td><td><b>${esc(r.name || "Sin nombre")}</b></td><td>${esc(r.requestDate || "")}</td><td style="text-align:right">${(r.items || []).length}</td><td style="text-align:right">${dinero(total(r))}</td>`
           + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status)}${r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
           + `<td style="white-space:nowrap"><button class="split-btn" onclick="reembolsoAdmin('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reembolsoAdmin('${q(r.id)}','xlsx')">⬇️ Excel</button>`
           + (r.status === "Enviado" ? ` <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Aceptado')">✅ Aceptar</button> <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Devuelto')">↩️ Devolver</button>` : "")
