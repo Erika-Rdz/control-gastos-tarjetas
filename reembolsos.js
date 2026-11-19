@@ -320,7 +320,7 @@
         + `<td>${celdaCentro(i, ed, dis, centros, opc)}</td>`
         + `<td><input type="number" step="0.01" min="0" ${dis} value="${i.amount || ""}" onchange="reembolsoCampo('${q(i.id)}','amount',this.value)" style="width:110px;text-align:right${dividido(i) && !(Number(i.amount) > 0) ? ";border:2px solid #A13A3A" : ""}" placeholder="${dividido(i) ? "Importe total" : ""}"></td>`
         + `<td style="white-space:nowrap">${i.receiptPath ? `<button class="split-btn" onclick="reembolsoVerPdf('${q(i.receiptPath)}')">👁️ Ver PDF</button> ` : ""}`
-        + (ed ? `<label class="split-btn" style="display:inline-block">${i.receiptPath ? "🔄 Reemplazar" : "📎 Subir PDF"}<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="reembolsoSubir('${q(i.id)}',this)"></label>` : "") + `</td>`
+        + (ed ? `<label class="split-btn" style="display:inline-block">${i.receiptPath ? "🔄 Reemplazar" : "📷 Foto / PDF"}<input type="file" accept="application/pdf,.pdf,image/*" style="display:none" onchange="reembolsoSubir('${q(i.id)}',this)"></label>` : "") + `</td>`
         + `<td>${ed ? `<button class="split-btn" title="Quitar" onclick="reembolsoQuitarLinea('${q(i.id)}')">🗑️</button>` : ""}</td></tr>`).join("")
       + `<tr style="background:#eef2f7"><td colspan="5"><b>Total</b></td><td style="text-align:right"><b id="reembolsoTotal">${dinero(total(actual))}</b></td><td colspan="2"></td></tr></tbody></table></div>`
       + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">`
