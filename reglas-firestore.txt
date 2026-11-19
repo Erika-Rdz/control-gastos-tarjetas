@@ -139,7 +139,9 @@ service cloud.firestore {
             && request.resource.data.status in ['Enviado', 'Devuelto']
             && (request.resource.data.status == 'Devuelto' || request.resource.data.bossApprovedBy == myEmail()));
       allow delete: if isAdmin()
-        || (accessEnabled() && resource.data.ownerEmail == myEmail() && resource.data.status == 'Borrador');
+        // El dueño puede eliminar mientras no esté aceptado ni pagado
+        || (accessEnabled() && resource.data.ownerEmail == myEmail()
+            && resource.data.status in ['Borrador', 'Devuelto', 'Enviado', 'Por autorizar jefe']);
     }
   }
 }

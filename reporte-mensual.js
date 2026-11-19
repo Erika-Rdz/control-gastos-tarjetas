@@ -520,6 +520,7 @@
           + `<td>${esc(r.signedName)}<br><small>${fechaHora(r.signedAt)}</small>${aprobacion(r)}</td><td>${etiqueta(r.status, r)}${r.reviewComment ? "<br><small>" + (r.reviewedByName ? esc(r.reviewedByName) + ": " : "") + esc(r.reviewComment) + "</small>" : ""}</td>`
           + `<td style="white-space:nowrap"><button class="split-btn" onclick="reporteAdmin('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reporteAdmin('${q(r.id)}','xlsx')">⬇️ Excel</button>`
           + (r.status === "Enviado" ? ` <button class="split-btn" onclick="reporteRevisar('${q(r.id)}','Aceptado')">✅ Aceptar</button> <button class="split-btn" onclick="reporteRevisar('${q(r.id)}','Devuelto')">↩️ Devolver</button>` : "")
+          + ` <button class="split-btn" title="Eliminar" onclick="reporteEliminar('${q(r.id)}')">🗑️</button>`
           + `</td></tr>`).join("") + `</tbody></table></div>`
         : "<p>Todavía no hay reportes enviados.</p>")
       + `<div id="reporteAdminAviso" style="margin-top:8px;color:#5F6E70"></div>`;
@@ -535,6 +536,12 @@
       else descargar(await pdf(r, true, aviso), nombreArchivo(r, "pdf"), "application/pdf");
       aviso("");
     } catch (e) { console.error(e); aviso(""); alert("No se pudo generar el archivo. " + (e.message || "")); }
+  };
+  window.reporteEliminar = async function (id) {
+    const r = recibidos.find(x => x.id === id); if (!r) return;
+    if (!confirm("¿Eliminar el reporte de " + r.employee + " de " + etiquetaMes(r.period) + " por USD " + dinero(r.total) + "?\n\nSe borra para todos y no se puede recuperar. El empleado podrá volver a firmar y enviar ese mes.")) return;
+    try { await window.eliminarReporteMensual(id); await refrescarRecibidos(); }
+    catch (e) { console.error(e); alert("No se pudo eliminar. " + (e.code || e.message || "")); }
   };
   window.reporteRevisar = async function (id, status) {
     let comentario = "";

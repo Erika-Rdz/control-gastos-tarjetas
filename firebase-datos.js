@@ -562,6 +562,8 @@ window.guardarReembolso = async function (id, datos) {
   else if (window.avisarCorreo && registro.status === "Enviado") window.avisarCorreo("reembolso", registro);
 };
 window.eliminarReembolso = async function (id) { await deleteDoc(doc(db, "reembolsos", id)); };
+// Administradora: elimina un reporte mensual recibido.
+window.eliminarReporteMensual = async function (id) { await deleteDoc(doc(db, "reportes", id)); };
 window.reembolsosRecibidos = async function () {
   const r = await getDocs(collection(db, "reembolsos"));
   return r.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.status !== "Borrador");

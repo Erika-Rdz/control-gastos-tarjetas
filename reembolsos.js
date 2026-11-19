@@ -21,6 +21,8 @@
   const dinero = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const nuevoId = () => Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const editable = r => r && (r.status === "Borrador" || r.status === "Devuelto");
+  // El empleado puede eliminar mientras no esté aceptado ni pagado.
+  const sePuedeEliminar = r => r && r.status !== "Aceptado" && r.status !== "Pagado";
   function fechaHora(iso) { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("es-MX") + " " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }); }
   const isoAUs = v => { const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[2] + "/" + m[3] + "/" + m[1] : v || ""; };
   const usAIso = v => { const m = String(v || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? m[3] + "-" + m[1] + "-" + m[2] : ""; };
@@ -195,7 +197,10 @@
   };
 
   window.reembolsoEliminar = async function (id) {
-    if (!confirm("¿Eliminar este borrador de reembolso?")) return;
+    const r0 = lista.find(r => r.id === id) || actual || {};
+    const msg = r0.status === "Borrador" ? "¿Eliminar este borrador de reembolso?"
+      : "¿Eliminar el reembolso \"" + (r0.name || "") + "\"? Ya fue enviado: se cancelará y dejará de aparecer también para Cuentas por Pagar" + (r0.status === "Por autorizar jefe" ? " y para tu jefe." : ".");
+    if (!confirm(msg)) return;
     try { await window.eliminarReembolso(id); lista = lista.filter(r => r.id !== id); if (actual && actual.id === id) actual = null; pintarUsuario(); }
     catch (e) { console.error(e); alert("No se pudo eliminar. " + (e.code || e.message || "")); }
   };
@@ -291,7 +296,7 @@
             + `<td style="white-space:nowrap">${editable(r) ? `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">✏️ Abrir</button> ` : `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">👁️ Ver</button> `}`
             + `<button class="split-btn" onclick="reembolsoDescargar('${q(r.id)}','pdf')">⬇️ PDF</button>`
             + (editable(r) ? ` <button class="primary" style="width:auto;display:inline-block" onclick="reembolsoFirmarDesdeLista('${q(r.id)}')">✍️ Firmar y enviar</button>` : "")
-            + (r.status === "Borrador" ? ` <button class="split-btn" onclick="reembolsoEliminar('${q(r.id)}')">🗑️</button>` : "") + `</td></tr>`).join("")
+            + (sePuedeEliminar(r) ? ` <button class="split-btn" title="Eliminar" onclick="reembolsoEliminar('${q(r.id)}')">🗑️</button>` : "") + `</td></tr>`).join("")
           + `</tbody></table></div>` : `<p style="margin-top:14px">Todavía no tienes reembolsos. Pulsa <b>+ Nuevo reembolso</b> para capturar tus gastos.</p>`)
         + `<div id="reembolsoAviso" style="margin-top:8px;color:#5F6E70"></div>`;
       return;
@@ -353,11 +358,18 @@
           + `<td style="white-space:nowrap"><button class="split-btn" onclick="reembolsoAdmin('${q(r.id)}','pdf')">⬇️ PDF</button> <button class="split-btn" onclick="reembolsoAdmin('${q(r.id)}','xlsx')">⬇️ Excel</button>`
           + (r.status === "Enviado" ? ` <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Aceptado')">✅ Aceptar</button> <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Devuelto')">↩️ Devolver</button>` : "")
           + (r.status === "Aceptado" ? ` <button class="split-btn" onclick="reembolsoRevisar('${q(r.id)}','Pagado')">💵 Marcar pagado</button>` : "")
+          + ` <button class="split-btn" title="Eliminar" onclick="reembolsoAdminEliminar('${q(r.id)}')">🗑️</button>`
           + `</td></tr>`).join("") + `</tbody></table></div>` : "<p>Todavía no hay reembolsos enviados.</p>")
       + `<div id="reembolsoAdminAviso" style="margin-top:8px;color:#5F6E70"></div>`;
   }
   window.reembolsosActualizar = cargarAdmin;
   window.reembolsoAdmin = (id, tipo) => { const r = recibidos.find(x => x.id === id); if (r) descargar(r, tipo, t => { const el = document.getElementById("reembolsoAdminAviso"); if (el) el.textContent = t; }); };
+  window.reembolsoAdminEliminar = async function (id) {
+    const r = recibidos.find(x => x.id === id); if (!r) return;
+    if (!confirm("¿Eliminar el reembolso \"" + (r.name || "Sin nombre") + "\" de " + (r.ownerName || r.ownerEmail) + " por USD " + dinero(total(r)) + "?\n\nSe borra para todos (también para el empleado) y no se puede recuperar.")) return;
+    try { await window.eliminarReembolso(id); await cargarAdmin(); }
+    catch (e) { console.error(e); alert("No se pudo eliminar. " + (e.code || e.message || "")); }
+  };
   window.reembolsoRevisar = async function (id, status) {
     let comentario = "";
     if (status === "Devuelto") {
