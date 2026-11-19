@@ -6,7 +6,7 @@
 // Llena los tres datos de abajo con los de tu cuenta de EmailJS. Mientras estén vacíos,
 // el sistema funciona igual, solo que no manda correos.
 window.AVISOS_CORREO = {
-  serviceId: "service_412Gmail_API",   // Email Services → Service ID   (ej. "service_abc123")
+  serviceId: "service_9jsnezl",   // Email Services → Service ID   (ej. "service_abc123")
   templateId: "template_c6dh4et",  // Email Templates → Template ID (ej. "template_xyz789")
   publicKey: "A__2jh6zCEBicnPMb"    // Account → General → Public Key
 };
