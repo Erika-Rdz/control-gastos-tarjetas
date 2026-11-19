@@ -119,6 +119,22 @@
   };
   window.reembolsoAbrir = id => { actual = lista.find(r => r.id === id) || null; pintarUsuario(); };
   window.reembolsoCerrar = async () => { try { await guardarAhora(); } catch (e) { console.error(e); } actual = null; pintarUsuario(); };
+  // Guardar y volver a la lista, para terminarlo y enviarlo después.
+  window.reembolsoGuardar = async function () {
+    if (!actual) return;
+    try {
+      await guardarAhora();
+      const nombre = actual.name || "Sin nombre";
+      actual = null; pintarUsuario();
+      const el = document.getElementById("reembolsoAviso");
+      if (el) el.innerHTML = `<span style="color:#2F7A68">💾 Se guardó el reembolso <b>${esc(nombre)}</b>. Cuando esté listo, búscalo en la lista y da clic en <b>✍️ Firmar y enviar</b>.</span>`;
+    } catch (e) { console.error(e); alert("No se pudo guardar. " + (e.code || e.message || "")); }
+  };
+  // Firmar y enviar directo desde la lista.
+  window.reembolsoFirmarDesdeLista = function (id) {
+    const r = lista.find(x => x.id === id); if (!r) return;
+    actual = r; pintarUsuario(); window.reembolsoFirmar();
+  };
   window.reembolsoAgregar = function () { actual.items.push({ id: nuevoId(), date: "", place: "", concept: "", account: "", center: "", amount: 0 }); pintarUsuario(); guardarLuego(); };
   window.reembolsoQuitarLinea = function (id) {
     if (!confirm("¿Quitar este gasto del reembolso?")) return;
@@ -268,6 +284,7 @@
             + `<td>${esc(r.signedName || "")}<br><small>${fechaHora(r.signedAt)}</small></td><td>${etiqueta(r.status)}${r.status === "Devuelto" && r.reviewComment ? "<br><small>" + esc(r.reviewComment) + "</small>" : ""}</td>`
             + `<td style="white-space:nowrap">${editable(r) ? `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">✏️ Abrir</button> ` : `<button class="split-btn" onclick="reembolsoAbrir('${q(r.id)}')">👁️ Ver</button> `}`
             + `<button class="split-btn" onclick="reembolsoDescargar('${q(r.id)}','pdf')">⬇️ PDF</button>`
+            + (editable(r) ? ` <button class="primary" style="width:auto;display:inline-block" onclick="reembolsoFirmarDesdeLista('${q(r.id)}')">✍️ Firmar y enviar</button>` : "")
             + (r.status === "Borrador" ? ` <button class="split-btn" onclick="reembolsoEliminar('${q(r.id)}')">🗑️</button>` : "") + `</td></tr>`).join("")
           + `</tbody></table></div>` : `<p style="margin-top:14px">Todavía no tienes reembolsos. Pulsa <b>+ Nuevo reembolso</b> para capturar tus gastos.</p>`)
         + `<div id="reembolsoAviso" style="margin-top:8px;color:#5F6E70"></div>`;
@@ -297,9 +314,10 @@
       + `<tr style="background:#eef2f7"><td colspan="5"><b>Total</b></td><td style="text-align:right"><b id="reembolsoTotal">${dinero(total(actual))}</b></td><td colspan="2"></td></tr></tbody></table></div>`
       + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">`
       + (ed ? `<button class="split-btn" onclick="reembolsoAgregar()">+ Agregar gasto</button>` : "")
+      + (ed ? `<button class="split-btn" onclick="reembolsoGuardar()">💾 Guardar y terminar después</button>` : "")
       + `<button class="split-btn" onclick="reembolsoDescargar('${q(actual.id)}','pdf')">⬇️ PDF con comprobantes</button>`
       + (ed ? `<button class="primary" style="width:auto;display:inline-block" onclick="reembolsoFirmar()">✍️ Firmar y enviar</button>` : "")
-      + `</div><p style="font-size:12px;color:#5F6E70">${ed ? "Los cambios se guardan solos como borrador." : "Este reembolso ya se envió; solo es de consulta."}</p>`
+      + `</div><p style="font-size:12px;color:#5F6E70">${ed ? "Los cambios se guardan solos como borrador. Puedes guardarlo y terminarlo después: lo encontrarás en Mis reembolsos." : "Este reembolso ya se envió; solo es de consulta."}</p>`
       + `<div id="reembolsoAviso" style="margin-top:8px;color:#5F6E70"></div>`;
   }
 
