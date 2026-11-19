@@ -6,7 +6,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence, sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where, onSnapshot, writeBatch, deleteField, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, writeBatch, deleteField, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
 const ADMIN_EMAIL = "accountspayable@peninsulasteel.com";
 const firebaseConfig = {
@@ -103,6 +103,9 @@ function accesosDeseados() {
     if (m.has(email)) Object.assign(m.get(email), { isBoss: true, bossName: b.name });
     else m.set(email, { email, employee: "", role: "Jefe", isBoss: true, bossName: b.name, enabled: true });
   });
+  // Personas autorizadas para enviar reembolsos (Configuración → Reembolsos)
+  const reemb = new Set((s.reimbursers || []).map(norm));
+  m.forEach((a, email) => { a.canReimburse = reemb.has(email); });
   return m;
 }
 
@@ -444,7 +447,8 @@ window.cargarSesionEmpleado = async function (email) {
     bossName: info.bossName || "",
     dept: info.dept || "",
     jefeEmail: info.jefeEmail || "",
-    jefeNombre: info.jefeNombre || ""
+    jefeNombre: info.jefeNombre || "",
+    canReimburse: !!info.canReimburse
   };
 };
 
@@ -527,6 +531,28 @@ window.decidirReporteJefe = async function (id, autorizar, comentario) {
 window.cambiarEstadoReporte = async function (id, status, comentario) {
   const u = auth.currentUser;
   await updateDoc(doc(db, "reportes", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedByName: "Cuentas por Pagar", reviewedAt: new Date().toISOString() });
+};
+
+// ---------- Reembolsos ----------
+window.misReembolsos = async function () {
+  const u = auth.currentUser; if (!u) return [];
+  const r = await getDocs(query(collection(db, "reembolsos"), where("ownerEmail", "==", norm(u.email))));
+  return r.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+window.guardarReembolso = async function (id, datos) {
+  const u = auth.currentUser; if (!u) throw new Error("Tu sesión no está activa.");
+  const registro = JSON.parse(JSON.stringify({ ...datos, ownerEmail: norm(u.email) }));
+  registro.updatedAt = new Date().toISOString();
+  await setDoc(doc(db, "reembolsos", id), registro);
+};
+window.eliminarReembolso = async function (id) { await deleteDoc(doc(db, "reembolsos", id)); };
+window.reembolsosRecibidos = async function () {
+  const r = await getDocs(collection(db, "reembolsos"));
+  return r.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.status !== "Borrador");
+};
+window.estadoReembolso = async function (id, status, comentario) {
+  const u = auth.currentUser;
+  await updateDoc(doc(db, "reembolsos", id), { status, reviewComment: comentario || "", reviewedBy: norm(u && u.email), reviewedAt: new Date().toISOString() });
 };
 
 // ---------- Restaurar sesión al recargar la página ----------

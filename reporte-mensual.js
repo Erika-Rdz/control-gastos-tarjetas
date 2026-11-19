@@ -105,7 +105,7 @@
     try { const r = await fetch("logo.jpg"); if (!r.ok) return null; return new Uint8Array(await r.arrayBuffer()); } catch (e) { return null; }
   }
   function nombreArchivo(rep, ext) {
-    return ("Credit Card Report " + rep.employee + " " + rep.period).replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "_") + "." + ext;
+    return ((rep.fileTitle || "Credit Card Report") + " " + rep.employee + " " + rep.period).replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "_") + "." + ext;
   }
   function descargar(bytes, nombre, tipo) {
     const a = document.createElement("a");
@@ -133,7 +133,7 @@
       ws.addImage(id, { tl: { col: 0, row: 0 }, ext: { width: 220, height: 61 } });
     }
     ws.getRow(1).height = 26; ws.getRow(2).height = 26;
-    ws.getCell("D1").value = "Monthly Credit Card Report";
+    ws.getCell("D1").value = rep.title || "Monthly Credit Card Report";
     ws.getCell("D1").font = { name: "Arial", size: 16, bold: true, color: { argb: "FF1D3B45" } };
     ws.getCell("D2").value = "Period: " + rep.from + " to " + rep.to;
     ws.getCell("D2").font = negrita;
@@ -219,7 +219,7 @@
     await cargarScript(LIBS.pdflib);
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const docu = await PDFDocument.create();
-    docu.setTitle("Monthly Credit Card Report - " + rep.employee + " - " + rep.period);
+    docu.setTitle((rep.title || "Monthly Credit Card Report") + " - " + rep.employee + " - " + rep.period);
     const reg = await docu.embedFont(StandardFonts.Helvetica);
     const neg = await docu.embedFont(StandardFonts.HelveticaBold);
     const piz = rgb(PIZARRA[0] / 255, PIZARRA[1] / 255, PIZARRA[2] / 255);
@@ -252,7 +252,7 @@
       y = H - M;
       if (primera) {
         if (img) { const e = img.scale(110 / img.width); pag.drawImage(img, { x: M, y: y - e.height, width: e.width, height: e.height }); }
-        pag.drawText("Monthly Credit Card Report", { x: W - M - neg.widthOfTextAtSize("Monthly Credit Card Report", 16), y: y - 16, size: 16, font: neg, color: piz });
+        pag.drawText(rep.title || "Monthly Credit Card Report", { x: W - M - neg.widthOfTextAtSize(rep.title || "Monthly Credit Card Report", 16), y: y - 16, size: 16, font: neg, color: piz });
         const per = "Period: " + rep.from + " to " + rep.to;
         pag.drawText(per, { x: W - M - reg.widthOfTextAtSize(per, 10), y: y - 32, size: 10, font: reg, color: gris });
         y -= 50;
@@ -270,7 +270,7 @@
         pag.drawText("Explanation by day of business purpose", { x: M, y, size: 11, font: neg, color: piz });
         y -= 20;
       } else {
-        pag.drawText("Monthly Credit Card Report - " + limpio(rep.employee) + " - " + etiquetaMes(rep.period), { x: M, y: y - 10, size: 9, font: neg, color: piz });
+        pag.drawText((rep.title || "Monthly Credit Card Report") + " - " + limpio(rep.employee) + (rep.period ? " - " + etiquetaMes(rep.period) : ""), { x: M, y: y - 10, size: 9, font: neg, color: piz });
         y -= 30;
       }
       if (!sinTabla) encabezadoTabla();
@@ -608,6 +608,9 @@
     try { await window.decidirReporteJefe(id, autorizar, comentario.trim()); await refrescarEquipo(); }
     catch (e) { console.error(e); alert("No se pudo guardar. " + (e.code || e.message || "")); }
   };
+
+  // Para que otros módulos (reembolsos) generen el mismo formato.
+  window.ReporteAPI = { pdf, excel, descargar, nombreArchivo };
 
   // ---------- Integración ----------
   function vigilar() {
